@@ -8,7 +8,7 @@ import html2canvas from 'html2canvas';
 // ==========================================
 // 1. ตั้งค่า API ของ Google Sheets (นำ URL มาใส่ตรงนี้)
 // ==========================================
-const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzvYwbUN4CpwQuVidmE20rR7nsAE13Ee28BdikahJ5dLtll9iXU0SG3yVFXARmANhna/exec'; // ใส่ URL ของคุณตรงนี้
+const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzvYwbUN4CpwQuVidmE20rR7nsAE13Ee28BdikahJ5dLtll9iXU0SG3yVFXARmANhna/exec'; // <--- ใส่ URL ตรงนี้ในเครื่องหมายคำพูดเดี่ยว
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
@@ -16,19 +16,14 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [isExporting, setIsExporting] = useState(false);
-  
   const [modalType, setModalType] = useState(null); 
   
   const defaultForm = {
     id: null, wo: '', title: '', equipment: '', plan: '', status: 'Pending', blocker: '', blockerOther: '', remark: ''
   };
   const [formData, setFormData] = useState(defaultForm);
-
   const reportRef = useRef(null);
 
-  // ==========================================
-  // โหลดข้อมูล
-  // ==========================================
   useEffect(() => {
     fetchData();
   }, []);
@@ -36,23 +31,18 @@ export default function App() {
   const fetchData = async () => {
     setIsLoading(true);
     try {
-      if (!GOOGLE_SHEET_API_URL) throw new Error("No API URL");
+      if (!GOOGLE_SHEET_API_URL || GOOGLE_SHEET_API_URL === 'ใส่_URL_ของคุณตรงนี้') throw new Error("No API URL");
       const response = await fetch(GOOGLE_SHEET_API_URL);
       const data = await response.json();
       setTasks(data);
     } catch (error) {
-      setTasks([
-        { id: 1, wo: 'WO-8012', title: 'เปลี่ยนลูกปืนมอเตอร์', equipment: 'P-101A', plan: '2026-10-05', status: 'Pending', blocker: 'รอ Spare Part', remark: 'สั่งของแล้ว', completedDate: null },
-        { id: 2, wo: 'WO-8013', title: 'ซ่อมรอยรั่วท่อ Steam', equipment: 'L-205', plan: '2026-10-10', status: 'Pending', blocker: 'รอนั่งร้าน', remark: '', completedDate: null },
-      ]);
+      console.log("กำลังใช้ข้อมูลจำลอง");
+      setTasks([]); // เปลี่ยนให้เริ่มด้วยตารางว่างๆ จะได้ดูง่ายว่าข้อมูลจริงเข้าไหม
     } finally {
       setIsLoading(false);
     }
   };
 
-  // ==========================================
-  // จัดการงาน (เพิ่ม, แก้ไข, จบงาน)
-  // ==========================================
   const openActionMenu = (task) => {
     let currentBlocker = task.blocker || '';
     let currentOther = '';
@@ -79,34 +69,30 @@ export default function App() {
 
     const taskData = { ...formData, blocker: finalBlocker };
 
+    // อัปเดตหน้าจอทันที (Optimistic UI)
     if (formData.id) {
       setTasks(prev => prev.map(t => t.id === formData.id ? taskData : t));
-      if (GOOGLE_SHEET_API_URL) {
-        try { 
-          fetch(GOOGLE_SHEET_API_URL, { 
-            method: 'POST',
-            redirect: 'follow', // เพิ่มบรรทัดนี้
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // เพิ่มบรรทัดนี้
-            body: JSON.stringify({ action: 'update', data: taskData }) 
-          }); 
-        } catch (err) {}
-      }
     } else {
       taskData.id = Date.now();
       taskData.completedDate = null;
       setTasks(prev => [taskData, ...prev]);
-      if (GOOGLE_SHEET_API_URL) {
-        try { 
-          fetch(GOOGLE_SHEET_API_URL, { 
-            method: 'POST',
-            redirect: 'follow', // เพิ่มบรรทัดนี้
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // เพิ่มบรรทัดนี้
-            body: JSON.stringify({ action: 'update', data: taskData }) 
-          }); 
-        } catch (err) {}
-      }
     }
     setModalType(null); 
+
+    // ส่งข้อมูลไป Google Sheets (แบบทะลุบล็อก CORS)
+    if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
+      try {
+        await fetch(GOOGLE_SHEET_API_URL, { 
+          method: 'POST', 
+          mode: 'no-cors', // บังคับส่งข้อมูลแบบไม่สนเรื่อง CORS 
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: formData.id ? 'update' : 'add', data: taskData }) 
+        });
+        console.log("ส่งข้อมูลสำเร็จ");
+      } catch (err) {
+        console.error("ส่งข้อมูลล้มเหลว", err);
+      }
+    }
   };
 
   const handleCompleteTask = async () => {
@@ -116,21 +102,21 @@ export default function App() {
     setTasks(prev => prev.map(t => 
       t.id === taskId ? { ...t, status: 'Completed', blocker: '', completedDate: today } : t
     ));
+    setModalType(null); 
 
-    if (GOOGLE_SHEET_API_URL) {
+    // ส่งสถานะ Completed ไป Google Sheets
+    if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
       try {
-        fetch(GOOGLE_SHEET_API_URL, {
+        await fetch(GOOGLE_SHEET_API_URL, {
           method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: 'updateStatus', id: taskId, status: 'Completed', date: today })
         });
       } catch (err) {}
     }
-    setModalType(null); 
   };
 
-  // ==========================================
-  // Filter & Export
-  // ==========================================
   const filteredTasks = useMemo(() => {
     return tasks.filter(task => {
       if (task.status === 'Completed' && task.completedDate) {
@@ -197,7 +183,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* KPI Cards (UI) */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-l-blue-500"><div className="text-slate-500 text-sm">Pending</div><div className="text-3xl font-bold">{stats.pending}</div></div>
           <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-l-orange-500"><div className="text-slate-500 text-sm">รอนั่งร้าน</div><div className="text-3xl font-bold text-orange-600">{stats.scaffold}</div></div>
@@ -205,7 +190,6 @@ export default function App() {
           <div className="bg-white p-4 rounded-xl shadow-sm border-l-4 border-l-emerald-500"><div className="text-slate-500 text-sm">รอผู้รับเหมา</div><div className="text-3xl font-bold text-emerald-600">{stats.contractor}</div></div>
         </div>
 
-        {/* Search */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -225,7 +209,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Table (UI) */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -241,35 +224,38 @@ export default function App() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredTasks.map((task) => (
-                  <tr key={task.id} className="hover:bg-slate-50 group">
-                    <td className="p-4"><span className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 text-sm">{task.wo}</span></td>
-                    <td className="p-4 font-medium text-slate-800">{task.title} <div className="text-xs text-slate-500 mt-1">Tag: {task.equipment || '-'}</div></td>
-                    <td className="p-4 text-sm text-slate-600">
-                      {task.plan ? <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400"/> {task.plan}</div> : '-'}
-                    </td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border
-                        ${task.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
-                        {task.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-sm">{task.blocker && task.status !== 'Completed' ? <span className="text-red-600">{task.blocker}</span> : '-'}</td>
-                    <td className="p-4 text-sm text-slate-600">{task.remark || '-'}</td>
-                    <td className="p-4 text-center">
-                      <button onClick={() => openActionMenu(task)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="จัดการ/แก้ไขงาน">
-                        <Settings className="w-5 h-5" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {filteredTasks.length === 0 ? (
+                  <tr><td colSpan="7" className="p-8 text-center text-slate-500">ไม่มีข้อมูลงานค้างในระบบ</td></tr>
+                ) : (
+                  filteredTasks.map((task) => (
+                    <tr key={task.id} className="hover:bg-slate-50 group">
+                      <td className="p-4"><span className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 text-sm">{task.wo}</span></td>
+                      <td className="p-4 font-medium text-slate-800">{task.title} <div className="text-xs text-slate-500 mt-1">Tag: {task.equipment || '-'}</div></td>
+                      <td className="p-4 text-sm text-slate-600">
+                        {task.plan ? <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400"/> {task.plan}</div> : '-'}
+                      </td>
+                      <td className="p-4">
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border
+                          ${task.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-amber-50 text-amber-700 border-amber-200'}`}>
+                          {task.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm">{task.blocker && task.status !== 'Completed' ? <span className="text-red-600">{task.blocker}</span> : '-'}</td>
+                      <td className="p-4 text-sm text-slate-600">{task.remark || '-'}</td>
+                      <td className="p-4 text-center">
+                        <button onClick={() => openActionMenu(task)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="จัดการ/แก้ไขงาน">
+                          <Settings className="w-5 h-5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      {/* Modal: Action Menu */}
       {modalType === 'action' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center">
@@ -292,7 +278,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal: Add/Edit Form */}
       {modalType === 'form' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
@@ -354,27 +339,12 @@ export default function App() {
             <h1 className="text-3xl font-bold text-slate-800 mb-2">EPT-LV Maintenance Backlog Report</h1>
             <p className="text-slate-500">วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV | สถานที่: Map Ta Phut, Rayong</p>
           </div>
-
-          {/* KPI Summary ใน Report */}
           <div className="flex gap-4 mb-6">
-             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-blue-500 text-center">
-                <div className="text-slate-500 text-sm mb-1">Pending</div>
-                <div className="text-2xl font-bold text-slate-800">{stats.pending}</div>
-             </div>
-             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-orange-500 text-center">
-                <div className="text-slate-500 text-sm mb-1">รอนั่งร้าน</div>
-                <div className="text-2xl font-bold text-orange-600">{stats.scaffold}</div>
-             </div>
-             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-purple-500 text-center">
-                <div className="text-slate-500 text-sm mb-1">รอ Spare Part</div>
-                <div className="text-2xl font-bold text-purple-600">{stats.spare}</div>
-             </div>
-             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-emerald-500 text-center">
-                <div className="text-slate-500 text-sm mb-1">รอผู้รับเหมา</div>
-                <div className="text-2xl font-bold text-emerald-600">{stats.contractor}</div>
-             </div>
+             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-blue-500 text-center"><div className="text-slate-500 text-sm mb-1">Pending</div><div className="text-2xl font-bold text-slate-800">{stats.pending}</div></div>
+             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-orange-500 text-center"><div className="text-slate-500 text-sm mb-1">รอนั่งร้าน</div><div className="text-2xl font-bold text-orange-600">{stats.scaffold}</div></div>
+             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-purple-500 text-center"><div className="text-slate-500 text-sm mb-1">รอ Spare Part</div><div className="text-2xl font-bold text-purple-600">{stats.spare}</div></div>
+             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-emerald-500 text-center"><div className="text-slate-500 text-sm mb-1">รอผู้รับเหมา</div><div className="text-2xl font-bold text-emerald-600">{stats.contractor}</div></div>
           </div>
-
           <table className="w-full text-left mt-4 border-collapse">
             <thead>
               <tr className="bg-slate-100 text-sm text-slate-800">
@@ -399,9 +369,7 @@ export default function App() {
               ))}
             </tbody>
           </table>
-          {filteredTasks.length > 15 && (
-            <p className="text-right text-xs text-slate-400 mt-2">* มีรายการงานซ่อนอยู่เนื่องจากล้นหน้ากระดาษ</p>
-          )}
+          {filteredTasks.length > 15 && <p className="text-right text-xs text-slate-400 mt-2">* มีรายการงานซ่อนอยู่เนื่องจากล้นหน้ากระดาษ</p>}
       </div>
     </div>
   );
