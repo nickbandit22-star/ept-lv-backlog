@@ -139,9 +139,24 @@ export default function App() {
     });
   }, [tasks, searchTerm, statusFilter]);
 
+  // ประมวลผลข้อมูลสำหรับ Report
   const highlightedTasks = filteredTasks.filter(t => t.isHighlight && t.status !== 'Completed');
   const normalTasks = filteredTasks.filter(t => !t.isHighlight || t.status === 'Completed');
+  
+  // นำข้อมูลมารวมกันให้ Highlight อยู่บนสุด (แสดงผล "ทั้งหมด" ไม่ตัดทิ้งแล้ว)
   const reportTasks = [...highlightedTasks, ...normalTasks];
+
+  // ระบบ Auto-Fit: คำนวณความหนาแน่นของตารางเพื่อปรับขนาดตัวอักษรให้อยู่ในหน้า A4
+  const isDense = reportTasks.length > 26; // เริ่มปรับเมื่อมีงานเกิน 26 งาน
+  const isVeryDense = reportTasks.length > 40; // ปรับเล็กสุดเมื่อมีงานเกิน 40 งาน
+  
+  const tablePad = isVeryDense ? 'p-1' : isDense ? 'p-1.5' : 'p-2';
+  const textSize = isVeryDense ? 'text-[9px]' : isDense ? 'text-[10px]' : 'text-xs';
+
+  // แบ่ง 2 คอลัมน์ ซ้าย-ขวา
+  const midPoint = Math.ceil(reportTasks.length / 2);
+  const leftTasks = reportTasks.slice(0, midPoint);
+  const rightTasks = reportTasks.slice(midPoint);
 
   const activeTasks = tasks.filter(t => t.status !== 'Completed');
   const stats = {
@@ -155,12 +170,12 @@ export default function App() {
   };
 
   const blockerKPIs = [
-    { key: 'outage', label: 'รอ Outage', count: stats.outage, border: 'border-l-red-500', text: 'text-red-600' },
-    { key: 'spare', label: 'รอ Spare Part', count: stats.spare, border: 'border-l-purple-500', text: 'text-purple-600' },
-    { key: 'scaffold', label: 'รอนั่งร้าน', count: stats.scaffold, border: 'border-l-orange-500', text: 'text-orange-600' },
-    { key: 'contractor', label: 'รอผู้รับเหมา', count: stats.contractor, border: 'border-l-emerald-500', text: 'text-emerald-600' },
-    { key: 'manpower', label: 'รอ Manpower', count: stats.manpower, border: 'border-l-yellow-500', text: 'text-yellow-600' },
-    { key: 'other', label: 'ติดปัญหาอื่นๆ', count: stats.other, border: 'border-l-slate-500', text: 'text-slate-600' },
+    { key: 'outage', label: 'รอ Outage', count: stats.outage, border: 'border-l-red-500', text: 'text-red-600', bg: 'bg-white' },
+    { key: 'spare', label: 'รอ Spare Part', count: stats.spare, border: 'border-l-purple-500', text: 'text-purple-600', bg: 'bg-white' },
+    { key: 'scaffold', label: 'รอนั่งร้าน', count: stats.scaffold, border: 'border-l-orange-500', text: 'text-orange-600', bg: 'bg-white' },
+    { key: 'contractor', label: 'รอผู้รับเหมา', count: stats.contractor, border: 'border-l-emerald-500', text: 'text-emerald-600', bg: 'bg-white' },
+    { key: 'manpower', label: 'รอ Manpower', count: stats.manpower, border: 'border-l-yellow-500', text: 'text-yellow-600', bg: 'bg-white' },
+    { key: 'other', label: 'ติดปัญหาอื่นๆ', count: stats.other, border: 'border-l-slate-500', text: 'text-slate-600', bg: 'bg-white' },
   ];
   const activeBlockers = blockerKPIs.filter(b => b.count > 0); 
 
@@ -169,8 +184,8 @@ export default function App() {
     const element = reportRef.current;
     if (!element) return;
     try {
-      element.style.display = 'flex';
-      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+      element.style.display = 'block';
+      const canvas = await html2canvas(element, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
       link.download = `EPT_LV_Backlog_${new Date().toISOString().split('T')[0]}.png`;
@@ -186,8 +201,8 @@ export default function App() {
     const element = reportRef.current;
     if (!element) return;
     try {
-      element.style.display = 'flex';
-      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+      element.style.display = 'block';
+      const canvas = await html2canvas(element, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
       
       canvas.toBlob(async (blob) => {
         try {
@@ -237,10 +252,52 @@ export default function App() {
     );
   }
 
+  // UI Component สำหรับ Render ตารางใน A4 (ลดความซ้ำซ้อนโค้ด)
+  const ReportTable = ({ tasksToRender }) => (
+    <table className="w-full text-left border-collapse border border-slate-300 shadow-sm rounded-lg overflow-hidden">
+      <thead>
+        <tr className={`bg-slate-100 text-slate-700 ${textSize} border-b border-slate-300`}>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[12%] text-center`}>WO</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[30%]`}>Description / Tag</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[14%] text-center`}>Plan</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[12%] text-center`}>Status</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[15%]`}>Blockers</th>
+          <th className={`${tablePad} font-bold w-[17%]`}>Remark</th>
+        </tr>
+      </thead>
+      <tbody>
+        {tasksToRender.map(t => {
+          const isHl = t.isHighlight && t.status !== 'Completed';
+          return (
+            <tr key={t.id} className={`${textSize} text-slate-800 border-b border-slate-200 ${isHl ? 'bg-yellow-50 font-semibold' : 'bg-white'}`}>
+              <td className={`${tablePad} border-r border-slate-200 font-bold text-center ${isHl ? 'text-yellow-700' : 'text-blue-700'}`}>
+                {isHl && <span>⭐ </span>}{t.wo}
+              </td>
+              <td className={`${tablePad} border-r border-slate-200`}>
+                <div className="font-bold">{t.title}</div>
+                <div className="text-[0.8em] text-slate-500 mt-0.5 font-normal line-clamp-1">{t.equipment || '-'}</div>
+              </td>
+              <td className={`${tablePad} border-r border-slate-200 text-center`}>{formatDate(t.plan)}</td>
+              <td className={`${tablePad} border-r border-slate-200 text-center font-medium`}>{t.status}</td>
+              <td className={`${tablePad} border-r border-slate-200 ${t.blocker && t.status !== 'Completed' ? 'text-red-600 font-bold' : ''}`}>
+                {t.blocker || '-'}
+              </td>
+              <td className={`${tablePad} text-slate-600`}>{t.remark || '-'}</td>
+            </tr>
+          );
+        })}
+        {tasksToRender.length === 0 && (
+          <tr><td colSpan="6" className={`${tablePad} text-center text-slate-400 bg-white`}>ไม่มีข้อมูล</td></tr>
+        )}
+      </tbody>
+    </table>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
+        {/* Header และ ปุ่มจัดการหน้าเว็บปกติ */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -261,15 +318,16 @@ export default function App() {
           </div>
         </div>
 
+        {/* Dashboard สรุปด้านบน (หน้าเว็บ) */}
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[150px] bg-white p-4 rounded-xl shadow-sm border-l-4 border-l-blue-500">
-            <div className="text-slate-500 text-sm">Pending ทั้งหมด</div>
+            <div className="text-slate-500 text-sm font-medium">Pending ทั้งหมด</div>
             <div className="text-3xl font-bold">{stats.pending}</div>
           </div>
           
           {activeBlockers.map(b => (
             <div key={b.key} className={`flex-1 min-w-[150px] bg-white p-4 rounded-xl shadow-sm border-l-4 ${b.border}`}>
-              <div className="text-slate-500 text-sm">{b.label}</div>
+              <div className="text-slate-500 text-sm font-medium">{b.label}</div>
               <div className={`text-3xl font-bold ${b.text}`}>{b.count}</div>
             </div>
           ))}
@@ -281,6 +339,7 @@ export default function App() {
           )}
         </div>
 
+        {/* ระบบ Filter (หน้าเว็บ) */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
@@ -300,7 +359,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* ---------------- ตารางงาน HIGHLIGHT ---------------- */}
+        {/* ---------------- ตารางงาน HIGHLIGHT (หน้าเว็บ) ---------------- */}
         {highlightedTasks.length > 0 && (
           <div className="mb-6 bg-white rounded-xl shadow-sm border-2 border-yellow-300 overflow-hidden">
             <div className="bg-yellow-50 text-yellow-800 font-bold p-4 border-b border-yellow-200 flex items-center gap-2">
@@ -342,7 +401,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ---------------- ตารางงานปกติ ---------------- */}
+        {/* ---------------- ตารางงานปกติ (หน้าเว็บ) ---------------- */}
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
           {highlightedTasks.length > 0 && (
             <div className="bg-slate-50 text-slate-600 font-bold p-4 border-b border-slate-200 flex items-center gap-2">
@@ -396,6 +455,7 @@ export default function App() {
         </div>
       </div>
 
+      {/* Modal Actions */}
       {modalType === 'action' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center">
@@ -418,6 +478,7 @@ export default function App() {
         </div>
       )}
 
+      {/* Modal Form */}
       {modalType === 'form' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
@@ -490,64 +551,43 @@ export default function App() {
         </div>
       )}
 
-      {/* ---------------- Hidden Export Template (Report A4 แนวตั้ง คมชัดสูง) ---------------- */}
-      <div ref={reportRef} className="hidden bg-white p-8 mx-auto text-black flex-col" style={{ width: '794px', height: '1123px', boxSizing: 'border-box', overflow: 'hidden' }}>
+      {/* ---------------- Hidden Export Template (Report A4 แนวนอน 2 คอลัมน์ สีสันสวยงาม) ---------------- */}
+      <div ref={reportRef} className="hidden bg-white p-8 mx-auto" style={{ width: '1123px', minHeight: '794px', boxSizing: 'border-box' }}>
           
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-extrabold text-black mb-2 uppercase tracking-wide">EPT-LV Maintenance Backlog</h1>
-            <p className="text-black text-base font-bold text-gray-700">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
+          <div className="flex justify-between items-end mb-6 border-b-2 border-slate-100 pb-4">
+            <div>
+              <h1 className="text-3xl font-extrabold text-slate-800 mb-1 tracking-tight">EPT-LV Maintenance Backlog</h1>
+              <p className="text-slate-500 font-medium">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
+            </div>
+            {/* โชว์ยอดสรุปรวมขวาบน */}
+            <div className="flex gap-2">
+              <div className="bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg text-center">
+                <div className="text-xs font-bold text-blue-600 uppercase">Total Pending</div>
+                <div className="text-xl font-extrabold text-blue-700">{stats.pending}</div>
+              </div>
+            </div>
           </div>
           
-          {/* ปรับกล่อง KPI เป็น Grid เพื่อให้พอดีกับกระดาษแนวตั้ง */}
-          <div className="grid grid-cols-3 gap-3 mb-6">
-             <div className="bg-white p-3 border-2 border-black text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
-               <div className="text-black text-sm font-bold mb-1 uppercase">Pending</div>
-               <div className="text-2xl font-extrabold text-black">{stats.pending}</div>
-             </div>
-             {activeBlockers.map(b => (
-               <div key={b.key} className={`bg-white p-3 border-2 border-black text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]`}>
-                  <div className="text-black text-sm font-bold mb-1">{b.label}</div>
-                  <div className={`text-2xl font-extrabold text-black`}>{b.count}</div>
-               </div>
-             ))}
-          </div>
+          {/* กล่อง KPI จัดเรียงแนวนอนสวยงาม */}
+          {activeBlockers.length > 0 && (
+            <div className="flex gap-3 mb-6 w-full">
+              {activeBlockers.map(b => (
+                <div key={b.key} className={`flex-1 bg-white p-3 rounded-xl border border-slate-200 border-l-4 ${b.border} shadow-sm`}>
+                    <div className="text-slate-500 text-xs font-bold mb-1 uppercase">{b.label}</div>
+                    <div className={`text-2xl font-extrabold ${b.text}`}>{b.count}</div>
+                </div>
+              ))}
+            </div>
+          )}
 
-          <table className="w-full text-left mt-2 border-collapse border-2 border-black table-fixed">
-            <thead>
-              <tr className="bg-gray-200 text-black text-sm border-b-2 border-black">
-                <th className="p-2 border border-black font-extrabold w-[12%] text-center">WO</th>
-                <th className="p-2 border border-black font-extrabold w-[30%]">Description / Tag</th>
-                <th className="p-2 border border-black font-extrabold w-[14%] text-center">Plan Date</th>
-                <th className="p-2 border border-black font-extrabold w-[12%] text-center">Status</th>
-                <th className="p-2 border border-black font-extrabold w-[15%]">Blockers</th>
-                <th className="p-2 border border-black font-extrabold w-[17%]">Remark</th>
-              </tr>
-            </thead>
-            <tbody>
-              {/* โชว์งานมากสุด 15 รายการเพื่อไม่ให้ล้นหน้ากระดาษ A4 แนวตั้ง */}
-              {reportTasks.slice(0, 15).map(t => {
-                const isHl = t.isHighlight && t.status !== 'Completed';
-                return (
-                  <tr key={t.id} className={`text-sm text-black ${isHl ? 'bg-yellow-100 font-semibold' : ''}`}>
-                    <td className="p-2 border border-black font-bold text-center">
-                      {isHl && <span>⭐ </span>}{t.wo}
-                    </td>
-                    <td className="p-2 border border-black">
-                      <div className="font-bold">{t.title}</div>
-                      <div className="text-xs text-gray-700 mt-0.5 font-normal">Tag: {t.equipment || '-'}</div>
-                    </td>
-                    <td className="p-2 border border-black text-center text-xs">{formatDate(t.plan)}</td>
-                    <td className="p-2 border border-black text-center font-bold text-xs">{t.status}</td>
-                    <td className="p-2 border border-black font-bold text-xs">{t.blocker || '-'}</td>
-                    <td className="p-2 border border-black text-xs">{t.remark || '-'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          {/* ตารางงาน 2 คอลัมน์ (Auto-Fit) */}
+          <div className="grid grid-cols-2 gap-6 items-start w-full">
+            <ReportTable tasksToRender={leftTasks} />
+            <ReportTable tasksToRender={rightTasks} />
+          </div>
           
-          <div className="mt-auto text-right text-sm text-black font-bold pt-4">
-            {reportTasks.length > 15 ? '* มีรายการซ่อนอยู่เนื่องจากพื้นที่กระดาษ A4' : ''}
+          <div className="mt-4 text-center text-xs text-slate-400 font-medium pt-2">
+            * สรุปรายงานสถานะงานค้างและงาน Highlight โดยแผนก EPT-LV
           </div>
       </div>
     </div>
