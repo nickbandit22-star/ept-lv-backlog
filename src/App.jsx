@@ -36,7 +36,6 @@ export default function App() {
       const response = await fetch(GOOGLE_SHEET_API_URL);
       const data = await response.json();
       
-      // แปลงข้อมูล: ตรวจหาว่ามี Tag [HL] ซ่อนอยู่ใน Remark ไหม
       const processedData = data.map(t => {
         let r = String(t.remark || '');
         let hl = false;
@@ -91,7 +90,6 @@ export default function App() {
 
     if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
       try {
-        // เตรียมข้อมูลส่งไป Sheet (ถ้าเป็น Highlight ให้แอบใส่ [HL] ไว้ใน Remark)
         const payloadData = { ...taskData };
         if (payloadData.isHighlight) {
           payloadData.remark = `[HL] ${payloadData.remark || ''}`.trim();
@@ -141,11 +139,8 @@ export default function App() {
     });
   }, [tasks, searchTerm, statusFilter]);
 
-  // แบ่งงานออกเป็น 2 กลุ่ม: Highlight (ยังไม่เสร็จ) และ Normal
   const highlightedTasks = filteredTasks.filter(t => t.isHighlight && t.status !== 'Completed');
   const normalTasks = filteredTasks.filter(t => !t.isHighlight || t.status === 'Completed');
-
-  // ข้อมูลสำหรับ Report A4 (ดึง Highlight ขึ้นไปเรียงด้านบนสุด)
   const reportTasks = [...highlightedTasks, ...normalTasks];
 
   const activeTasks = tasks.filter(t => t.status !== 'Completed');
@@ -174,9 +169,8 @@ export default function App() {
     const element = reportRef.current;
     if (!element) return;
     try {
-      element.style.display = 'block';
-      // ปรับ scale เป็น 4 เพื่อให้เส้นและตัวหนังสือคมกริบที่สุด
-      const canvas = await html2canvas(element, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
+      element.style.display = 'flex';
+      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
       link.download = `EPT_LV_Backlog_${new Date().toISOString().split('T')[0]}.png`;
@@ -192,8 +186,8 @@ export default function App() {
     const element = reportRef.current;
     if (!element) return;
     try {
-      element.style.display = 'block';
-      const canvas = await html2canvas(element, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
+      element.style.display = 'flex';
+      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
       
       canvas.toBlob(async (blob) => {
         try {
@@ -201,7 +195,6 @@ export default function App() {
           await navigator.clipboard.write([item]);
           alert('คัดลอกรูปภาพรายงานสำเร็จแล้ว! 🎉\nสามารถไปที่แชท LINE แล้วกด "วาง (Paste)" ได้เลยครับ');
         } catch (err) {
-          // Fallback กลับมาใช้แบบข้อความ ถ้า Browser ไม่รองรับ Copy รูป
           const today = new Date().toLocaleDateString('th-TH');
           let text = `🛠️ สรุปงานค้างซ่อมบำรุง EPT-LV\n📅 วันที่: ${today}\n\n`;
           text += `📊 สถานะปัจจุบัน:\n- ⏳ Pending ทั้งหมด: ${stats.pending} งาน\n`;
@@ -245,7 +238,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6 font-sans">
+    <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -312,7 +305,7 @@ export default function App() {
           <div className="mb-6 bg-white rounded-xl shadow-sm border-2 border-yellow-300 overflow-hidden">
             <div className="bg-yellow-50 text-yellow-800 font-bold p-4 border-b border-yellow-200 flex items-center gap-2">
               <Star className="w-5 h-5 fill-yellow-500 text-yellow-500" />
-              Highlight ({highlightedTasks.length})
+              งาน Highlight เร่งด่วน / สำคัญ ({highlightedTasks.length})
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -433,7 +426,6 @@ export default function App() {
             </h2>
             <div className="space-y-4">
               
-              {/* Checkbox สำหรับ Highlight */}
               <div className="col-span-2">
                 <label className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg cursor-pointer hover:bg-yellow-100 transition-colors">
                   <input type="checkbox" className="w-5 h-5 accent-yellow-600" 
@@ -498,59 +490,65 @@ export default function App() {
         </div>
       )}
 
-      {/* ---------------- Hidden Export Template (Report A4 คมชัดสูง) ---------------- */}
-      <div ref={reportRef} className="hidden bg-white p-12 mx-auto text-black" style={{ width: '1123px', minHeight: '794px' }}>
+      {/* ---------------- Hidden Export Template (Report A4 แนวตั้ง คมชัดสูง) ---------------- */}
+      <div ref={reportRef} className="hidden bg-white p-8 mx-auto text-black flex-col" style={{ width: '794px', height: '1123px', boxSizing: 'border-box', overflow: 'hidden' }}>
+          
           <div className="text-center mb-6">
-            <h1 className="text-3xl font-extrabold text-black mb-2 uppercase tracking-wide">EPT-LV Maintenance Backlog Report</h1>
-            <p className="text-black text-lg font-medium">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
+            <h1 className="text-2xl font-extrabold text-black mb-2 uppercase tracking-wide">EPT-LV Maintenance Backlog</h1>
+            <p className="text-black text-base font-bold text-gray-700">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
           </div>
           
-          <div className="flex gap-4 mb-8">
-             <div className="flex-1 bg-white p-4 border-2 border-black text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-               <div className="text-black text-base font-bold mb-1 uppercase">Pending</div>
-               <div className="text-3xl font-extrabold text-black">{stats.pending}</div>
+          {/* ปรับกล่อง KPI เป็น Grid เพื่อให้พอดีกับกระดาษแนวตั้ง */}
+          <div className="grid grid-cols-3 gap-3 mb-6">
+             <div className="bg-white p-3 border-2 border-black text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+               <div className="text-black text-sm font-bold mb-1 uppercase">Pending</div>
+               <div className="text-2xl font-extrabold text-black">{stats.pending}</div>
              </div>
              {activeBlockers.map(b => (
-               <div key={b.key} className={`flex-1 bg-white p-4 border-2 border-black text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
-                  <div className="text-black text-base font-bold mb-1">{b.label}</div>
-                  <div className={`text-3xl font-extrabold text-black`}>{b.count}</div>
+               <div key={b.key} className={`bg-white p-3 border-2 border-black text-center shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]`}>
+                  <div className="text-black text-sm font-bold mb-1">{b.label}</div>
+                  <div className={`text-2xl font-extrabold text-black`}>{b.count}</div>
                </div>
              ))}
           </div>
 
-          <table className="w-full text-left mt-4 border-collapse border-2 border-black">
+          <table className="w-full text-left mt-2 border-collapse border-2 border-black table-fixed">
             <thead>
-              <tr className="bg-gray-200 text-black text-base border-b-2 border-black">
-                <th className="p-3 border border-black font-extrabold w-28 text-center">WO</th>
-                <th className="p-3 border border-black font-extrabold">Description / Tag</th>
-                <th className="p-3 border border-black font-extrabold w-32 text-center">Plan Date</th>
-                <th className="p-3 border border-black font-extrabold w-28 text-center">Status</th>
-                <th className="p-3 border border-black font-extrabold w-44">Blockers</th>
-                <th className="p-3 border border-black font-extrabold w-48">Remark</th>
+              <tr className="bg-gray-200 text-black text-sm border-b-2 border-black">
+                <th className="p-2 border border-black font-extrabold w-[12%] text-center">WO</th>
+                <th className="p-2 border border-black font-extrabold w-[30%]">Description / Tag</th>
+                <th className="p-2 border border-black font-extrabold w-[14%] text-center">Plan Date</th>
+                <th className="p-2 border border-black font-extrabold w-[12%] text-center">Status</th>
+                <th className="p-2 border border-black font-extrabold w-[15%]">Blockers</th>
+                <th className="p-2 border border-black font-extrabold w-[17%]">Remark</th>
               </tr>
             </thead>
             <tbody>
+              {/* โชว์งานมากสุด 15 รายการเพื่อไม่ให้ล้นหน้ากระดาษ A4 แนวตั้ง */}
               {reportTasks.slice(0, 15).map(t => {
                 const isHl = t.isHighlight && t.status !== 'Completed';
                 return (
-                  <tr key={t.id} className={`text-base text-black ${isHl ? 'bg-yellow-100 font-semibold' : ''}`}>
-                    <td className="p-3 border border-black font-bold text-center">
-                      {isHl && <span className="text-xl">⭐ </span>}{t.wo}
+                  <tr key={t.id} className={`text-sm text-black ${isHl ? 'bg-yellow-100 font-semibold' : ''}`}>
+                    <td className="p-2 border border-black font-bold text-center">
+                      {isHl && <span>⭐ </span>}{t.wo}
                     </td>
-                    <td className="p-3 border border-black">
+                    <td className="p-2 border border-black">
                       <div className="font-bold">{t.title}</div>
-                      <div className="text-sm text-gray-700 mt-1 font-normal">Tag: {t.equipment || '-'}</div>
+                      <div className="text-xs text-gray-700 mt-0.5 font-normal">Tag: {t.equipment || '-'}</div>
                     </td>
-                    <td className="p-3 border border-black text-center">{formatDate(t.plan)}</td>
-                    <td className="p-3 border border-black text-center font-bold">{t.status}</td>
-                    <td className="p-3 border border-black font-bold">{t.blocker || '-'}</td>
-                    <td className="p-3 border border-black">{t.remark || '-'}</td>
+                    <td className="p-2 border border-black text-center text-xs">{formatDate(t.plan)}</td>
+                    <td className="p-2 border border-black text-center font-bold text-xs">{t.status}</td>
+                    <td className="p-2 border border-black font-bold text-xs">{t.blocker || '-'}</td>
+                    <td className="p-2 border border-black text-xs">{t.remark || '-'}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
-          {reportTasks.length > 15 && <p className="text-right text-sm text-black mt-3 font-bold">* มีรายการซ่อนอยู่เนื่องจากล้นหน้ากระดาษ A4</p>}
+          
+          <div className="mt-auto text-right text-sm text-black font-bold pt-4">
+            {reportTasks.length > 15 ? '* มีรายการซ่อนอยู่เนื่องจากพื้นที่กระดาษ A4' : ''}
+          </div>
       </div>
     </div>
   );
