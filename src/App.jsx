@@ -8,7 +8,7 @@ import html2canvas from 'html2canvas';
 // ==========================================
 // 1. ตั้งค่า API ของ Google Sheets (นำ URL มาใส่ตรงนี้)
 // ==========================================
-const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbzvYwbUN4CpwQuVidmE20rR7nsAE13Ee28BdikahJ5dLtll9iXU0SG3yVFXARmANhna/exec'; // <--- ใส่ URL ตรงนี้ในเครื่องหมายคำพูดเดี่ยว
+const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbwGsKdgbdGW6w6Be7y_Ye3XmsqYgAvM6sF6hU21IteCFHR93QYDUMHo8VNdiaDHoDHg/exec'; // <--- ใส่ URL ตรงนี้ในเครื่องหมายคำพูดเดี่ยว
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
