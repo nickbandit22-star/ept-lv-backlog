@@ -8,7 +8,7 @@ import html2canvas from 'html2canvas';
 // ==========================================
 // 1. ตั้งค่า API ของ Google Sheets (นำ URL มาใส่ตรงนี้)
 // ==========================================
-const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbwGsKdgbdGW6w6Be7y_Ye3XmsqYgAvM6sF6hU21IteCFHR93QYDUMHo8VNdiaDHoDHg/exec'; // <--- ใส่ URL ตรงนี้ในเครื่องหมายคำพูดเดี่ยว
+const GOOGLE_SHEET_API_URL = 'https://script.google.com/macros/s/AKfycbwGsKdgbdGW6w6Be7y_Ye3XmsqYgAvM6sF6hU21IteCFHR93QYDUMHo8VNdiaDHoDHg/exec';
 
 export default function App() {
   const [tasks, setTasks] = useState([]);
@@ -36,8 +36,7 @@ export default function App() {
       const data = await response.json();
       setTasks(data);
     } catch (error) {
-      console.log("กำลังใช้ข้อมูลจำลอง");
-      setTasks([]); // เปลี่ยนให้เริ่มด้วยตารางว่างๆ จะได้ดูง่ายว่าข้อมูลจริงเข้าไหม
+      setTasks([]); 
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +68,7 @@ export default function App() {
 
     const taskData = { ...formData, blocker: finalBlocker };
 
-    // อัปเดตหน้าจอทันที (Optimistic UI)
+    // อัปเดตหน้าจอทันที
     if (formData.id) {
       setTasks(prev => prev.map(t => t.id === formData.id ? taskData : t));
     } else {
@@ -79,18 +78,15 @@ export default function App() {
     }
     setModalType(null); 
 
-    // ส่งข้อมูลไป Google Sheets (แบบทะลุบล็อก CORS)
+    // ส่งข้อมูลไป Google Sheets (แก้ปัญหา CORS ด้วยการส่งแบบ text/plain อัตโนมัติ)
     if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
       try {
         await fetch(GOOGLE_SHEET_API_URL, { 
           method: 'POST', 
-          mode: 'no-cors', // บังคับส่งข้อมูลแบบไม่สนเรื่อง CORS 
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: formData.id ? 'update' : 'add', data: taskData }) 
         });
-        console.log("ส่งข้อมูลสำเร็จ");
       } catch (err) {
-        console.error("ส่งข้อมูลล้มเหลว", err);
+        console.error("ส่งข้อมูลไม่สำเร็จ", err);
       }
     }
   };
@@ -104,13 +100,10 @@ export default function App() {
     ));
     setModalType(null); 
 
-    // ส่งสถานะ Completed ไป Google Sheets
     if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
       try {
         await fetch(GOOGLE_SHEET_API_URL, {
           method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body: JSON.stringify({ action: 'updateStatus', id: taskId, status: 'Completed', date: today })
         });
       } catch (err) {}
@@ -333,7 +326,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Hidden Export Template (Report A4) */}
       <div ref={reportRef} className="hidden bg-white p-10 mx-auto" style={{ width: '1123px', minHeight: '794px' }}>
           <div className="text-center mb-6">
             <h1 className="text-3xl font-bold text-slate-800 mb-2">EPT-LV Maintenance Backlog Report</h1>
