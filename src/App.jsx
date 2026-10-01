@@ -364,7 +364,7 @@ export default function App() {
           <div className="mb-6 bg-white rounded-xl shadow-sm border-2 border-yellow-300 overflow-hidden">
             <div className="bg-yellow-50 text-yellow-800 font-bold p-4 border-b border-yellow-200 flex items-center gap-2">
               <Star className="w-5 h-5 fill-yellow-500 text-yellow-500" />
-              งาน Highlight เร่งด่วน / สำคัญ ({highlightedTasks.length})
+              งาน Highlight ({highlightedTasks.length})
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -587,7 +587,7 @@ export default function App() {
           </div>
           
           <div className="mt-4 text-center text-xs text-slate-400 font-medium pt-2">
-            * สรุปรายงานสถานะงานค้างและงาน Highlight โดยแผนก EPT-LV
+            * สรุปรายงานสถานะงานค้าง โดยแผนก EPT-LV
           </div>
       </div>
     </div>
