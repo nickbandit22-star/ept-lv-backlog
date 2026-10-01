@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Filter, CheckCircle, Clock, FileText, AlertCircle, 
-  Plus, Camera, Layers, Calendar, Loader, Wrench, Edit, Settings 
+  Plus, Camera, Layers, Calendar, Loader, Wrench, Edit, Settings, MessageSquare
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
@@ -123,23 +123,6 @@ export default function App() {
     });
   }, [tasks, searchTerm, statusFilter]);
 
-  const exportToA4 = async () => {
-    setIsExporting(true);
-    const element = reportRef.current;
-    if (!element) return;
-    try {
-      element.style.display = 'block';
-      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
-      const link = document.createElement('a');
-      link.href = canvas.toDataURL('image/png');
-      link.download = `EPT_LV_Backlog_${new Date().toISOString().split('T')[0]}.png`;
-      link.click();
-    } catch (err) {} finally {
-      element.style.display = 'none';
-      setIsExporting(false);
-    }
-  };
-
   const activeTasks = tasks.filter(t => t.status !== 'Completed');
   const stats = {
     pending: tasks.filter(t => t.status === 'Pending').length,
@@ -161,6 +144,67 @@ export default function App() {
   ];
   const activeBlockers = blockerKPIs.filter(b => b.count > 0); 
 
+  const exportToA4 = async () => {
+    setIsExporting(true);
+    const element = reportRef.current;
+    if (!element) return;
+    try {
+      element.style.display = 'block';
+      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+      const link = document.createElement('a');
+      link.href = canvas.toDataURL('image/png');
+      link.download = `EPT_LV_Backlog_${new Date().toISOString().split('T')[0]}.png`;
+      link.click();
+    } catch (err) {} finally {
+      element.style.display = 'none';
+      setIsExporting(false);
+    }
+  };
+
+  // ฟังก์ชันจัดรูปแบบข้อความสำหรับส่ง LINE
+  const copyToLine = () => {
+    const today = new Date().toLocaleDateString('th-TH');
+    let text = `🛠️ สรุปงานค้างซ่อมบำรุง EPT-LV\n📅 วันที่: ${today}\n\n`;
+    
+    // สรุปสถานะ
+    text += `📊 สถานะปัจจุบัน:\n`;
+    text += `- ⏳ Pending ทั้งหมด: ${stats.pending} งาน\n`;
+    if (stats.outage > 0) text += `- 🔴 รอ Outage: ${stats.outage} งาน\n`;
+    if (stats.spare > 0) text += `- 🟣 รอ Spare Part: ${stats.spare} งาน\n`;
+    if (stats.scaffold > 0) text += `- 🟠 รอนั่งร้าน: ${stats.scaffold} งาน\n`;
+    if (stats.contractor > 0) text += `- 🟢 รอผู้รับเหมา: ${stats.contractor} งาน\n`;
+    if (stats.manpower > 0) text += `- 🟡 รอ Manpower: ${stats.manpower} งาน\n`;
+    if (stats.other > 0) text += `- ⚪ ติดปัญหาอื่นๆ: ${stats.other} งาน\n`;
+    
+    // รายการงานที่ค้าง (เรียงตามที่ filter ไว้)
+    text += `\n📝 รายการงานกำลังดำเนินการ:\n`;
+    const pendingList = filteredTasks.filter(t => t.status !== 'Completed');
+    if (pendingList.length === 0) {
+      text += `- ไม่มีงานค้าง 🎉\n`;
+    } else {
+      pendingList.forEach((t, index) => {
+        const blockerText = t.blocker ? ` [ติด: ${t.blocker}]` : '';
+        text += `${index + 1}. ${t.wo} : ${t.title}${blockerText}\n`;
+      });
+    }
+
+    // รายการงานที่เสร็จ (แสดงเฉพาะที่เสร็จใน 30 วันที่ผ่านมา)
+    const completedList = filteredTasks.filter(t => t.status === 'Completed');
+    if (completedList.length > 0) {
+      text += `\n✅ งานที่เสร็จสิ้นล่าสุด (ใน 30 วัน):\n`;
+      completedList.forEach((t, index) => {
+        text += `${index + 1}. ${t.wo} : ${t.title} (เสร็จ: ${formatDate(t.completedDate)})\n`;
+      });
+    }
+
+    // ทำการคัดลอกลง Clipboard
+    navigator.clipboard.writeText(text).then(() => {
+      alert('คัดลอกข้อความสำหรับส่ง LINE เรียบร้อยแล้ว!\nนำไปกดวาง (Paste) ใน LINE ได้เลยครับ');
+    }).catch(err => {
+      alert('ไม่สามารถคัดลอกข้อความได้ กรุณาลองใหม่อีกครั้ง');
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
@@ -181,11 +225,15 @@ export default function App() {
               EPT-LV Maintenance Backlog
             </h1>
           </div>
-          <div className="flex gap-2">
-            <button onClick={exportToA4} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg shadow-sm disabled:opacity-50">
+          {/* ปุ่มจัดการต่างๆ */}
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={copyToLine} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition-colors">
+              <MessageSquare className="w-4 h-4" /> Copy to LINE
+            </button>
+            <button onClick={exportToA4} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg shadow-sm disabled:opacity-50 hover:bg-gray-50">
               {isExporting ? <Loader className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />} Export (A4)
             </button>
-            <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm">
+            <button onClick={openAddForm} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm transition-colors">
               <Plus className="w-4 h-4" /> เพิ่มงานค้างใหม่
             </button>
           </div>
@@ -246,7 +294,7 @@ export default function App() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filteredTasks.length === 0 ? (
-                  <tr><td colSpan="7" className="p-8 text-center text-slate-500">ไม่มีข้อมูลงานค้างในระบบ</td></tr>
+                  <tr><td colSpan="7" className="p-8 text-center text-slate-500">ไม่มีข้อมูลงานในระบบ</td></tr>
                 ) : (
                   filteredTasks.map((task) => (
                     <tr key={task.id} className="hover:bg-slate-50 group">
