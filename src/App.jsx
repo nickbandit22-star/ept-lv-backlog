@@ -106,7 +106,6 @@ export default function App() {
     }
   };
 
-  // ฟังก์ชันตัดเวลาออก ให้เหลือแค่วันที่ (YYYY-MM-DD)
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return String(dateString).split('T')[0];
@@ -141,7 +140,6 @@ export default function App() {
     }
   };
 
-  // คำนวณสถานะ Blocker แต่ละประเภท (นับเฉพาะงานที่ยังไม่ Completed)
   const activeTasks = tasks.filter(t => t.status !== 'Completed');
   const stats = {
     pending: tasks.filter(t => t.status === 'Pending').length,
@@ -153,7 +151,6 @@ export default function App() {
     other: activeTasks.filter(t => t.blocker && t.blocker.startsWith('อื่นๆ')).length,
   };
 
-  // สร้างกล่องเฉพาะอันที่มีค่า > 0
   const blockerKPIs = [
     { key: 'outage', label: 'รอ Outage', count: stats.outage, border: 'border-l-red-500', text: 'text-red-600' },
     { key: 'spare', label: 'รอ Spare Part', count: stats.spare, border: 'border-l-purple-500', text: 'text-purple-600' },
@@ -162,7 +159,7 @@ export default function App() {
     { key: 'manpower', label: 'รอ Manpower', count: stats.manpower, border: 'border-l-yellow-500', text: 'text-yellow-600' },
     { key: 'other', label: 'ติดปัญหาอื่นๆ', count: stats.other, border: 'border-l-slate-500', text: 'text-slate-600' },
   ];
-  const activeBlockers = blockerKPIs.filter(b => b.count > 0); // โชว์เฉพาะ > 0
+  const activeBlockers = blockerKPIs.filter(b => b.count > 0); 
 
   if (isLoading) {
     return (
@@ -194,14 +191,12 @@ export default function App() {
           </div>
         </div>
 
-        {/* ระบบแสดงผลกล่อง KPI อัจฉริยะ */}
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[150px] bg-white p-4 rounded-xl shadow-sm border-l-4 border-l-blue-500">
             <div className="text-slate-500 text-sm">Pending ทั้งหมด</div>
             <div className="text-3xl font-bold">{stats.pending}</div>
           </div>
           
-          {/* แสดงกล่อง Blocker เฉพาะอันที่มีค่า > 0 */}
           {activeBlockers.map(b => (
             <div key={b.key} className={`flex-1 min-w-[150px] bg-white p-4 rounded-xl shadow-sm border-l-4 ${b.border}`}>
               <div className="text-slate-500 text-sm">{b.label}</div>
@@ -209,7 +204,6 @@ export default function App() {
             </div>
           ))}
 
-          {/* ถ้าไม่มีงานติด Blocker เลย จะแสดงกล่องนี้แทน */}
           {activeBlockers.length === 0 && (
             <div className="flex-1 min-w-[150px] bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-center text-slate-400">
               ไม่มีงานติดปัญหา (Blocker) 🎉
@@ -259,7 +253,6 @@ export default function App() {
                       <td className="p-4"><span className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 text-sm">{task.wo}</span></td>
                       <td className="p-4 font-medium text-slate-800">{task.title} <div className="text-xs text-slate-500 mt-1">Tag: {task.equipment || '-'}</div></td>
                       <td className="p-4 text-sm text-slate-600">
-                        {/* ตัดเวลาออกแล้วแสดงแค่วันที่ */}
                         {task.plan ? <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400"/> {formatDate(task.plan)}</div> : '-'}
                       </td>
                       <td className="p-4">
@@ -284,7 +277,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Modal Actions ... (คงเดิม) */}
       {modalType === 'action' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6 text-center">
@@ -307,7 +299,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modal Form ... (คงเดิม) */}
       {modalType === 'form' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
@@ -322,7 +313,6 @@ export default function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Plan Date</label>
-                  {/* แสดงวันที่ใน Form ให้ถูกต้อง */}
                   <input type="date" className="w-full border rounded-lg px-3 py-2" value={formatDate(formData.plan)} onChange={e => setFormData({...formData, plan: e.target.value})} />
                 </div>
               </div>
@@ -368,10 +358,9 @@ export default function App() {
       <div ref={reportRef} className="hidden bg-white p-10 mx-auto" style={{ width: '1123px', minHeight: '794px' }}>
           <div className="text-center mb-6">
             <h1 className="text-3xl font-bold text-slate-800 mb-2">EPT-LV Maintenance Backlog Report</h1>
-            <p className="text-slate-500">วันที่พิมพ์: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV | สถานที่: Map Ta Phut, Rayong</p>
+            <p className="text-slate-500">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
           </div>
           
-          {/* กล่อง KPI ใน Report A4 (โชว์แบบยืดหยุ่นเหมือนหน้าเว็บ) */}
           <div className="flex gap-4 mb-6">
              <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-blue-500 text-center">
                <div className="text-slate-500 text-sm mb-1">Pending</div>
@@ -401,7 +390,6 @@ export default function App() {
                 <tr key={t.id} className="text-sm">
                   <td className="p-3 border border-slate-200 font-medium">{t.wo}</td>
                   <td className="p-3 border border-slate-200">{t.title} <br/><span className="text-xs text-slate-500">Tag: {t.equipment || '-'}</span></td>
-                  {/* ตัดเวลาในรายงานด้วย */}
                   <td className="p-3 border border-slate-200">{formatDate(t.plan)}</td>
                   <td className="p-3 border border-slate-200">{t.status}</td>
                   <td className="p-3 border border-slate-200 text-red-600">{t.blocker || '-'}</td>
