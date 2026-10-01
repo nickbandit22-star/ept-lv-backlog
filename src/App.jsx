@@ -16,6 +16,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [isExporting, setIsExporting] = useState(false);
+  const [isCopying, setIsCopying] = useState(false); // สถานะตอนกำลังก๊อปปี้รูป
   const [modalType, setModalType] = useState(null); 
   
   const defaultForm = {
@@ -161,48 +162,34 @@ export default function App() {
     }
   };
 
-  // ฟังก์ชันจัดรูปแบบข้อความสำหรับส่ง LINE
-  const copyToLine = () => {
-    const today = new Date().toLocaleDateString('th-TH');
-    let text = `🛠️ สรุปงานค้างซ่อมบำรุง EPT-LV\n📅 วันที่: ${today}\n\n`;
-    
-    // สรุปสถานะ
-    text += `📊 สถานะปัจจุบัน:\n`;
-    text += `- ⏳ Pending ทั้งหมด: ${stats.pending} งาน\n`;
-    if (stats.outage > 0) text += `- 🔴 รอ Outage: ${stats.outage} งาน\n`;
-    if (stats.spare > 0) text += `- 🟣 รอ Spare Part: ${stats.spare} งาน\n`;
-    if (stats.scaffold > 0) text += `- 🟠 รอนั่งร้าน: ${stats.scaffold} งาน\n`;
-    if (stats.contractor > 0) text += `- 🟢 รอผู้รับเหมา: ${stats.contractor} งาน\n`;
-    if (stats.manpower > 0) text += `- 🟡 รอ Manpower: ${stats.manpower} งาน\n`;
-    if (stats.other > 0) text += `- ⚪ ติดปัญหาอื่นๆ: ${stats.other} งาน\n`;
-    
-    // รายการงานที่ค้าง (เรียงตามที่ filter ไว้)
-    text += `\n📝 รายการงานกำลังดำเนินการ:\n`;
-    const pendingList = filteredTasks.filter(t => t.status !== 'Completed');
-    if (pendingList.length === 0) {
-      text += `- ไม่มีงานค้าง 🎉\n`;
-    } else {
-      pendingList.forEach((t, index) => {
-        const blockerText = t.blocker ? ` [ติด: ${t.blocker}]` : '';
-        text += `${index + 1}. ${t.wo} : ${t.title}${blockerText}\n`;
-      });
+  // ฟังก์ชันใหม่: สร้างรูปแล้ว Copy ลง Clipboard ทันที
+  const copyToLine = async () => {
+    setIsCopying(true);
+    const element = reportRef.current;
+    if (!element) return;
+    try {
+      element.style.display = 'block';
+      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+      
+      canvas.toBlob(async (blob) => {
+        try {
+          const item = new ClipboardItem({ 'image/png': blob });
+          await navigator.clipboard.write([item]);
+          alert('คัดลอกรูปภาพรายงานสำเร็จแล้ว! 🎉\nสามารถไปที่แชท LINE แล้วกด "วาง (Paste)" ได้เลยครับ');
+        } catch (err) {
+          console.error(err);
+          alert('เบราว์เซอร์นี้อาจไม่รองรับการคัดลอกรูปภาพโดยตรง หรือยังไม่ได้อนุญาตสิทธิ์ Clipboard ครับ\nแนะนำให้ใช้ปุ่ม Export (A4) แทน');
+        } finally {
+          element.style.display = 'none';
+          setIsCopying(false);
+        }
+      }, 'image/png');
+    } catch (err) {
+      element.style.display = 'none';
+      setIsCopying(false);
+      console.error(err);
+      alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ');
     }
-
-    // รายการงานที่เสร็จ (แสดงเฉพาะที่เสร็จใน 30 วันที่ผ่านมา)
-    const completedList = filteredTasks.filter(t => t.status === 'Completed');
-    if (completedList.length > 0) {
-      text += `\n✅ งานที่เสร็จสิ้นล่าสุด (ใน 30 วัน):\n`;
-      completedList.forEach((t, index) => {
-        text += `${index + 1}. ${t.wo} : ${t.title} (เสร็จ: ${formatDate(t.completedDate)})\n`;
-      });
-    }
-
-    // ทำการคัดลอกลง Clipboard
-    navigator.clipboard.writeText(text).then(() => {
-      alert('คัดลอกข้อความสำหรับส่ง LINE เรียบร้อยแล้ว!\nนำไปกดวาง (Paste) ใน LINE ได้เลยครับ');
-    }).catch(err => {
-      alert('ไม่สามารถคัดลอกข้อความได้ กรุณาลองใหม่อีกครั้ง');
-    });
   };
 
   if (isLoading) {
@@ -227,8 +214,8 @@ export default function App() {
           </div>
           {/* ปุ่มจัดการต่างๆ */}
           <div className="flex gap-2 flex-wrap">
-            <button onClick={copyToLine} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition-colors">
-              <MessageSquare className="w-4 h-4" /> Copy to LINE
+            <button onClick={copyToLine} disabled={isCopying} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition-colors disabled:opacity-50">
+              {isCopying ? <Loader className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />} Copy ภาพลง LINE
             </button>
             <button onClick={exportToA4} disabled={isExporting} className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg shadow-sm disabled:opacity-50 hover:bg-gray-50">
               {isExporting ? <Loader className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />} Export (A4)
