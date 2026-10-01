@@ -82,14 +82,28 @@ export default function App() {
     if (formData.id) {
       setTasks(prev => prev.map(t => t.id === formData.id ? taskData : t));
       if (GOOGLE_SHEET_API_URL) {
-        try { fetch(GOOGLE_SHEET_API_URL, { method: 'POST', body: JSON.stringify({ action: 'update', data: taskData }) }); } catch (err) {}
+        try { 
+          fetch(GOOGLE_SHEET_API_URL, { 
+            method: 'POST',
+            redirect: 'follow', // เพิ่มบรรทัดนี้
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // เพิ่มบรรทัดนี้
+            body: JSON.stringify({ action: 'update', data: taskData }) 
+          }); 
+        } catch (err) {}
       }
     } else {
       taskData.id = Date.now();
       taskData.completedDate = null;
       setTasks(prev => [taskData, ...prev]);
       if (GOOGLE_SHEET_API_URL) {
-        try { fetch(GOOGLE_SHEET_API_URL, { method: 'POST', body: JSON.stringify({ action: 'add', data: taskData }) }); } catch (err) {}
+        try { 
+          fetch(GOOGLE_SHEET_API_URL, { 
+            method: 'POST',
+            redirect: 'follow', // เพิ่มบรรทัดนี้
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // เพิ่มบรรทัดนี้
+            body: JSON.stringify({ action: 'update', data: taskData }) 
+          }); 
+        } catch (err) {}
       }
     }
     setModalType(null); 
