@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Filter, CheckCircle, Clock, FileText, AlertCircle, 
-  Plus, Camera, Layers, Calendar, Loader, Wrench, Edit, Settings, MessageSquare
+  Plus, Camera, Layers, Calendar, Loader, Wrench, Edit, Settings, MessageSquare, Star
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
@@ -16,11 +16,11 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [isExporting, setIsExporting] = useState(false);
-  const [isCopying, setIsCopying] = useState(false); // สถานะตอนกำลังก๊อปปี้รูป
+  const [isCopying, setIsCopying] = useState(false); 
   const [modalType, setModalType] = useState(null); 
   
   const defaultForm = {
-    id: null, wo: '', title: '', equipment: '', plan: '', status: 'Pending', blocker: '', blockerOther: '', remark: ''
+    id: null, wo: '', title: '', equipment: '', plan: '', status: 'Pending', blocker: '', blockerOther: '', remark: '', isHighlight: false
   };
   const [formData, setFormData] = useState(defaultForm);
   const reportRef = useRef(null);
@@ -35,7 +35,18 @@ export default function App() {
       if (!GOOGLE_SHEET_API_URL || GOOGLE_SHEET_API_URL === 'ใส่_URL_ของคุณตรงนี้') throw new Error("No API URL");
       const response = await fetch(GOOGLE_SHEET_API_URL);
       const data = await response.json();
-      setTasks(data);
+      
+      // แปลงข้อมูล: ตรวจหาว่ามี Tag [HL] ซ่อนอยู่ใน Remark ไหม
+      const processedData = data.map(t => {
+        let r = String(t.remark || '');
+        let hl = false;
+        if (r.includes('[HL]')) {
+          hl = true;
+          r = r.replace('[HL]', '').trim();
+        }
+        return { ...t, remark: r, isHighlight: hl };
+      });
+      setTasks(processedData);
     } catch (error) {
       setTasks([]); 
     } finally {
@@ -80,9 +91,15 @@ export default function App() {
 
     if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
       try {
+        // เตรียมข้อมูลส่งไป Sheet (ถ้าเป็น Highlight ให้แอบใส่ [HL] ไว้ใน Remark)
+        const payloadData = { ...taskData };
+        if (payloadData.isHighlight) {
+          payloadData.remark = `[HL] ${payloadData.remark || ''}`.trim();
+        }
+
         await fetch(GOOGLE_SHEET_API_URL, { 
           method: 'POST', 
-          body: JSON.stringify({ action: formData.id ? 'update' : 'add', data: taskData }) 
+          body: JSON.stringify({ action: formData.id ? 'update' : 'add', data: payloadData }) 
         });
       } catch (err) {}
     }
@@ -93,7 +110,7 @@ export default function App() {
     const taskId = formData.id;
     
     setTasks(prev => prev.map(t => 
-      t.id === taskId ? { ...t, status: 'Completed', blocker: '', completedDate: today } : t
+      t.id === taskId ? { ...t, status: 'Completed', blocker: '', completedDate: today, isHighlight: false } : t
     ));
     setModalType(null); 
 
@@ -124,6 +141,13 @@ export default function App() {
     });
   }, [tasks, searchTerm, statusFilter]);
 
+  // แบ่งงานออกเป็น 2 กลุ่ม: Highlight (ยังไม่เสร็จ) และ Normal
+  const highlightedTasks = filteredTasks.filter(t => t.isHighlight && t.status !== 'Completed');
+  const normalTasks = filteredTasks.filter(t => !t.isHighlight || t.status === 'Completed');
+
+  // ข้อมูลสำหรับ Report A4 (ดึง Highlight ขึ้นไปเรียงด้านบนสุด)
+  const reportTasks = [...highlightedTasks, ...normalTasks];
+
   const activeTasks = tasks.filter(t => t.status !== 'Completed');
   const stats = {
     pending: tasks.filter(t => t.status === 'Pending').length,
@@ -151,7 +175,8 @@ export default function App() {
     if (!element) return;
     try {
       element.style.display = 'block';
-      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+      // ปรับ scale เป็น 4 เพื่อให้เส้นและตัวหนังสือคมกริบที่สุด
+      const canvas = await html2canvas(element, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
       const link = document.createElement('a');
       link.href = canvas.toDataURL('image/png');
       link.download = `EPT_LV_Backlog_${new Date().toISOString().split('T')[0]}.png`;
@@ -162,14 +187,13 @@ export default function App() {
     }
   };
 
-  // ฟังก์ชันใหม่: สร้างรูปแล้ว Copy ลง Clipboard ทันที
   const copyToLine = async () => {
     setIsCopying(true);
     const element = reportRef.current;
     if (!element) return;
     try {
       element.style.display = 'block';
-      const canvas = await html2canvas(element, { scale: 3, useCORS: true, backgroundColor: '#ffffff' });
+      const canvas = await html2canvas(element, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
       
       canvas.toBlob(async (blob) => {
         try {
@@ -177,8 +201,29 @@ export default function App() {
           await navigator.clipboard.write([item]);
           alert('คัดลอกรูปภาพรายงานสำเร็จแล้ว! 🎉\nสามารถไปที่แชท LINE แล้วกด "วาง (Paste)" ได้เลยครับ');
         } catch (err) {
-          console.error(err);
-          alert('เบราว์เซอร์นี้อาจไม่รองรับการคัดลอกรูปภาพโดยตรง หรือยังไม่ได้อนุญาตสิทธิ์ Clipboard ครับ\nแนะนำให้ใช้ปุ่ม Export (A4) แทน');
+          // Fallback กลับมาใช้แบบข้อความ ถ้า Browser ไม่รองรับ Copy รูป
+          const today = new Date().toLocaleDateString('th-TH');
+          let text = `🛠️ สรุปงานค้างซ่อมบำรุง EPT-LV\n📅 วันที่: ${today}\n\n`;
+          text += `📊 สถานะปัจจุบัน:\n- ⏳ Pending ทั้งหมด: ${stats.pending} งาน\n`;
+          activeBlockers.forEach(b => text += `- ${b.label}: ${b.count} งาน\n`);
+          
+          if (highlightedTasks.length > 0) {
+            text += `\n⭐ งาน HIGHLIGHT สำคัญ:\n`;
+            highlightedTasks.forEach((t, i) => {
+              text += `${i + 1}. ${t.wo} : ${t.title} ${t.blocker ? `[ติด: ${t.blocker}]` : ''}\n`;
+            });
+          }
+          
+          const normalPending = normalTasks.filter(t => t.status !== 'Completed');
+          if (normalPending.length > 0) {
+            text += `\n📝 งานกำลังดำเนินการ (ทั่วไป):\n`;
+            normalPending.forEach((t, i) => {
+              text += `${i + 1}. ${t.wo} : ${t.title} ${t.blocker ? `[ติด: ${t.blocker}]` : ''}\n`;
+            });
+          }
+          
+          navigator.clipboard.writeText(text);
+          alert('เบราว์เซอร์ไม่รองรับการก๊อปปี้รูป ระบบได้เปลี่ยนเป็นการคัดลอก "ข้อความ" ให้แทนครับ\nนำไปกดวางใน LINE ได้เลยครับ');
         } finally {
           element.style.display = 'none';
           setIsCopying(false);
@@ -187,8 +232,6 @@ export default function App() {
     } catch (err) {
       element.style.display = 'none';
       setIsCopying(false);
-      console.error(err);
-      alert('เกิดข้อผิดพลาดในการสร้างรูปภาพ');
     }
   };
 
@@ -212,7 +255,6 @@ export default function App() {
               EPT-LV Maintenance Backlog
             </h1>
           </div>
-          {/* ปุ่มจัดการต่างๆ */}
           <div className="flex gap-2 flex-wrap">
             <button onClick={copyToLine} disabled={isCopying} className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 shadow-sm transition-colors disabled:opacity-50">
               {isCopying ? <Loader className="w-4 h-4 animate-spin" /> : <MessageSquare className="w-4 h-4" />} Copy ภาพลง LINE
@@ -265,7 +307,56 @@ export default function App() {
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        {/* ---------------- ตารางงาน HIGHLIGHT ---------------- */}
+        {highlightedTasks.length > 0 && (
+          <div className="mb-6 bg-white rounded-xl shadow-sm border-2 border-yellow-300 overflow-hidden">
+            <div className="bg-yellow-50 text-yellow-800 font-bold p-4 border-b border-yellow-200 flex items-center gap-2">
+              <Star className="w-5 h-5 fill-yellow-500 text-yellow-500" />
+              งาน Highlight เร่งด่วน / สำคัญ ({highlightedTasks.length})
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-yellow-50/50 text-yellow-800 text-sm border-b border-yellow-200">
+                    <th className="p-4 font-semibold">WO</th>
+                    <th className="p-4 font-semibold min-w-[200px]">Description</th>
+                    <th className="p-4 font-semibold">Plan Date</th>
+                    <th className="p-4 font-semibold">Status</th>
+                    <th className="p-4 font-semibold min-w-[150px]">Blockers</th>
+                    <th className="p-4 font-semibold min-w-[150px]">Remark</th>
+                    <th className="p-4 font-semibold text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-yellow-100">
+                  {highlightedTasks.map((task) => (
+                    <tr key={task.id} className="hover:bg-yellow-50 group transition-colors">
+                      <td className="p-4"><span className="px-2.5 py-1 rounded bg-yellow-100 text-yellow-800 text-sm font-bold">{task.wo}</span></td>
+                      <td className="p-4 font-bold text-slate-900">{task.title} <div className="text-xs text-slate-500 mt-1 font-normal">Tag: {task.equipment || '-'}</div></td>
+                      <td className="p-4 text-sm text-slate-600">{task.plan ? <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4"/> {formatDate(task.plan)}</div> : '-'}</td>
+                      <td className="p-4"><span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border bg-amber-50 text-amber-700 border-amber-200">{task.status}</span></td>
+                      <td className="p-4 text-sm">{task.blocker ? <span className="text-red-600 font-semibold">{task.blocker}</span> : '-'}</td>
+                      <td className="p-4 text-sm text-slate-600">{task.remark || '-'}</td>
+                      <td className="p-4 text-center">
+                        <button onClick={() => openActionMenu(task)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                          <Settings className="w-5 h-5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* ---------------- ตารางงานปกติ ---------------- */}
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+          {highlightedTasks.length > 0 && (
+            <div className="bg-slate-50 text-slate-600 font-bold p-4 border-b border-slate-200 flex items-center gap-2">
+              <Layers className="w-5 h-5" />
+              รายการงานทั่วไป
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
@@ -280,12 +371,12 @@ export default function App() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredTasks.length === 0 ? (
-                  <tr><td colSpan="7" className="p-8 text-center text-slate-500">ไม่มีข้อมูลงานในระบบ</td></tr>
+                {normalTasks.length === 0 ? (
+                  <tr><td colSpan="7" className="p-8 text-center text-slate-500">ไม่มีข้อมูลงานในหมวดหมู่นี้</td></tr>
                 ) : (
-                  filteredTasks.map((task) => (
-                    <tr key={task.id} className="hover:bg-slate-50 group">
-                      <td className="p-4"><span className="px-2.5 py-1 rounded bg-blue-50 text-blue-700 text-sm">{task.wo}</span></td>
+                  normalTasks.map((task) => (
+                    <tr key={task.id} className={`hover:bg-slate-50 group ${task.status === 'Completed' ? 'opacity-70' : ''}`}>
+                      <td className="p-4"><span className="px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-sm">{task.wo}</span></td>
                       <td className="p-4 font-medium text-slate-800">{task.title} <div className="text-xs text-slate-500 mt-1">Tag: {task.equipment || '-'}</div></td>
                       <td className="p-4 text-sm text-slate-600">
                         {task.plan ? <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400"/> {formatDate(task.plan)}</div> : '-'}
@@ -299,7 +390,7 @@ export default function App() {
                       <td className="p-4 text-sm">{task.blocker && task.status !== 'Completed' ? <span className="text-red-600">{task.blocker}</span> : '-'}</td>
                       <td className="p-4 text-sm text-slate-600">{task.remark || '-'}</td>
                       <td className="p-4 text-center">
-                        <button onClick={() => openActionMenu(task)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="จัดการ/แก้ไขงาน">
+                        <button onClick={() => openActionMenu(task)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                           <Settings className="w-5 h-5" />
                         </button>
                       </td>
@@ -341,27 +432,44 @@ export default function App() {
               {formData.id ? 'แก้ไขข้อมูลงาน' : 'เพิ่มงานค้างใหม่ (EPT-LV)'}
             </h2>
             <div className="space-y-4">
+              
+              {/* Checkbox สำหรับ Highlight */}
+              <div className="col-span-2">
+                <label className="flex items-center gap-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg cursor-pointer hover:bg-yellow-100 transition-colors">
+                  <input type="checkbox" className="w-5 h-5 accent-yellow-600" 
+                    checked={formData.isHighlight} onChange={e => setFormData({...formData, isHighlight: e.target.checked})} />
+                  <span className="font-bold text-yellow-800 flex items-center gap-1">
+                    <Star className="w-5 h-5 fill-yellow-500 text-yellow-500" />
+                    ตั้งเป็นงาน Highlight (เร่งด่วน / สำคัญ)
+                  </span>
+                </label>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1">Work Order (WO)</label>
-                  <input type="text" className="w-full border rounded-lg px-3 py-2" value={formData.wo} onChange={e => setFormData({...formData, wo: e.target.value})} />
+                  <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                    value={formData.wo} onChange={e => setFormData({...formData, wo: e.target.value})} />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Plan Date</label>
-                  <input type="date" className="w-full border rounded-lg px-3 py-2" value={formatDate(formData.plan)} onChange={e => setFormData({...formData, plan: e.target.value})} />
+                  <input type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                    value={formatDate(formData.plan)} onChange={e => setFormData({...formData, plan: e.target.value})} />
                 </div>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">ชื่องาน (Description)</label>
-                <input type="text" className="w-full border rounded-lg px-3 py-2" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Tag อุปกรณ์</label>
-                <input type="text" className="w-full border rounded-lg px-3 py-2" value={formData.equipment} onChange={e => setFormData({...formData, equipment: e.target.value})} />
+                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  value={formData.equipment} onChange={e => setFormData({...formData, equipment: e.target.value})} />
               </div>
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
                 <label className="block text-sm font-medium mb-1">สาเหตุที่ติด (Blocker)</label>
-                <select className="w-full border rounded-lg px-3 py-2 mb-2"
+                <select className="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
                   value={formData.blocker} onChange={e => setFormData({...formData, blocker: e.target.value, blockerOther: ''})}>
                   <option value="">-- ไม่ติด (ดำเนินการได้) --</option>
                   <option value="รอนั่งร้าน">รอนั่งร้าน</option>
@@ -372,68 +480,77 @@ export default function App() {
                   <option value="อื่นๆ">อื่นๆ (ระบุ...)</option>
                 </select>
                 {formData.blocker === 'อื่นๆ' && (
-                  <input type="text" className="w-full border rounded-lg px-3 py-2 border-orange-300" placeholder="โปรดระบุ..."
+                  <input type="text" className="w-full border-2 rounded-lg px-3 py-2 border-orange-400 focus:ring-2 focus:ring-orange-500 focus:outline-none" placeholder="โปรดระบุสาเหตุ..."
                     value={formData.blockerOther} onChange={e => setFormData({...formData, blockerOther: e.target.value})} autoFocus />
                 )}
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Remark (หมายเหตุเพิ่มเติม)</label>
-                <input type="text" className="w-full border rounded-lg px-3 py-2" value={formData.remark} onChange={e => setFormData({...formData, remark: e.target.value})} />
+                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                  value={formData.remark} onChange={e => setFormData({...formData, remark: e.target.value})} />
               </div>
             </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button onClick={() => setModalType(null)} className="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg">ยกเลิก</button>
-              <button onClick={handleSaveTask} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">บันทึกข้อมูล</button>
+            <div className="mt-6 flex justify-end gap-3">
+              <button onClick={() => setModalType(null)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors">ยกเลิก</button>
+              <button onClick={handleSaveTask} className="px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors">บันทึกข้อมูล</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Hidden Export Template (Report A4) */}
-      <div ref={reportRef} className="hidden bg-white p-10 mx-auto" style={{ width: '1123px', minHeight: '794px' }}>
+      {/* ---------------- Hidden Export Template (Report A4 คมชัดสูง) ---------------- */}
+      <div ref={reportRef} className="hidden bg-white p-12 mx-auto text-black" style={{ width: '1123px', minHeight: '794px' }}>
           <div className="text-center mb-6">
-            <h1 className="text-3xl font-bold text-slate-800 mb-2">EPT-LV Maintenance Backlog Report</h1>
-            <p className="text-slate-500">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
+            <h1 className="text-3xl font-extrabold text-black mb-2 uppercase tracking-wide">EPT-LV Maintenance Backlog Report</h1>
+            <p className="text-black text-lg font-medium">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
           </div>
           
-          <div className="flex gap-4 mb-6">
-             <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 border-l-blue-500 text-center">
-               <div className="text-slate-500 text-sm mb-1">Pending</div>
-               <div className="text-2xl font-bold text-slate-800">{stats.pending}</div>
+          <div className="flex gap-4 mb-8">
+             <div className="flex-1 bg-white p-4 border-2 border-black text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+               <div className="text-black text-base font-bold mb-1 uppercase">Pending</div>
+               <div className="text-3xl font-extrabold text-black">{stats.pending}</div>
              </div>
              {activeBlockers.map(b => (
-               <div key={b.key} className={`flex-1 bg-white p-3 rounded-lg border border-slate-200 border-l-4 ${b.border} text-center`}>
-                  <div className="text-slate-500 text-sm mb-1">{b.label}</div>
-                  <div className={`text-2xl font-bold ${b.text}`}>{b.count}</div>
+               <div key={b.key} className={`flex-1 bg-white p-4 border-2 border-black text-center shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+                  <div className="text-black text-base font-bold mb-1">{b.label}</div>
+                  <div className={`text-3xl font-extrabold text-black`}>{b.count}</div>
                </div>
              ))}
           </div>
 
-          <table className="w-full text-left mt-4 border-collapse">
+          <table className="w-full text-left mt-4 border-collapse border-2 border-black">
             <thead>
-              <tr className="bg-slate-100 text-sm text-slate-800">
-                <th className="p-3 border border-slate-200 w-24">WO</th>
-                <th className="p-3 border border-slate-200">Description / Tag</th>
-                <th className="p-3 border border-slate-200 w-28">Plan Date</th>
-                <th className="p-3 border border-slate-200 w-24">Status</th>
-                <th className="p-3 border border-slate-200 w-40">Blockers</th>
-                <th className="p-3 border border-slate-200 w-48">Remark</th>
+              <tr className="bg-gray-200 text-black text-base border-b-2 border-black">
+                <th className="p-3 border border-black font-extrabold w-28 text-center">WO</th>
+                <th className="p-3 border border-black font-extrabold">Description / Tag</th>
+                <th className="p-3 border border-black font-extrabold w-32 text-center">Plan Date</th>
+                <th className="p-3 border border-black font-extrabold w-28 text-center">Status</th>
+                <th className="p-3 border border-black font-extrabold w-44">Blockers</th>
+                <th className="p-3 border border-black font-extrabold w-48">Remark</th>
               </tr>
             </thead>
             <tbody>
-              {filteredTasks.slice(0, 15).map(t => (
-                <tr key={t.id} className="text-sm">
-                  <td className="p-3 border border-slate-200 font-medium">{t.wo}</td>
-                  <td className="p-3 border border-slate-200">{t.title} <br/><span className="text-xs text-slate-500">Tag: {t.equipment || '-'}</span></td>
-                  <td className="p-3 border border-slate-200">{formatDate(t.plan)}</td>
-                  <td className="p-3 border border-slate-200">{t.status}</td>
-                  <td className="p-3 border border-slate-200 text-red-600">{t.blocker || '-'}</td>
-                  <td className="p-3 border border-slate-200 text-slate-600">{t.remark || '-'}</td>
-                </tr>
-              ))}
+              {reportTasks.slice(0, 15).map(t => {
+                const isHl = t.isHighlight && t.status !== 'Completed';
+                return (
+                  <tr key={t.id} className={`text-base text-black ${isHl ? 'bg-yellow-100 font-semibold' : ''}`}>
+                    <td className="p-3 border border-black font-bold text-center">
+                      {isHl && <span className="text-xl">⭐ </span>}{t.wo}
+                    </td>
+                    <td className="p-3 border border-black">
+                      <div className="font-bold">{t.title}</div>
+                      <div className="text-sm text-gray-700 mt-1 font-normal">Tag: {t.equipment || '-'}</div>
+                    </td>
+                    <td className="p-3 border border-black text-center">{formatDate(t.plan)}</td>
+                    <td className="p-3 border border-black text-center font-bold">{t.status}</td>
+                    <td className="p-3 border border-black font-bold">{t.blocker || '-'}</td>
+                    <td className="p-3 border border-black">{t.remark || '-'}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-          {filteredTasks.length > 15 && <p className="text-right text-xs text-slate-400 mt-2">* มีรายการงานซ่อนอยู่เนื่องจากล้นหน้ากระดาษ</p>}
+          {reportTasks.length > 15 && <p className="text-right text-sm text-black mt-3 font-bold">* มีรายการซ่อนอยู่เนื่องจากล้นหน้ากระดาษ A4</p>}
       </div>
     </div>
   );
