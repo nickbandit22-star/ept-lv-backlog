@@ -646,7 +646,7 @@ export default function App() {
           </div>
           
           <div className="mt-4 text-center text-xs text-slate-400 font-medium pt-2">
-            * สรุปรายงานสถานะงานค้าง งาน Highlight และงานเสร็จสิ้น โดยแผนก EPT-LV
+            * สรุปรายงานสถานะงานค้าง โดยแผนก EPT-LV
           </div>
       </div>
     </div>
