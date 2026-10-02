@@ -36,7 +36,6 @@ export default function App() {
       const response = await fetch(GOOGLE_SHEET_API_URL);
       const data = await response.json();
       
-      // แปลงข้อมูลและกรองงานที่ถูกลบทิ้ง (Deleted) ออกทันที
       const processedData = data.map(t => {
         let r = String(t.remark || '');
         let hl = false;
@@ -54,7 +53,7 @@ export default function App() {
         }
         
         return { ...t, remark: r, isHighlight: hl, category: cat };
-      }).filter(t => t.status !== 'Deleted'); // ซ่อนงานที่ถูกลบ
+      }).filter(t => t.status !== 'Deleted');
       
       setTasks(processedData);
     } catch (error) {
@@ -64,7 +63,6 @@ export default function App() {
     }
   };
 
-  // ดึงหมวดหมู่ที่ไม่ซ้ำกันมาทำเป็น Dropdown
   const uniqueCategories = useMemo(() => {
     const cats = tasks.map(t => t.category).filter(c => c && c.trim() !== '');
     return [...new Set(cats)];
@@ -110,7 +108,6 @@ export default function App() {
         const payloadData = { ...taskData };
         let finalRemark = payloadData.remark || '';
         
-        // แอบแพ็ค Category และ Highlight ลงไปใน Remark เพื่อไม่ต้องแก้ Database
         if (payloadData.category) finalRemark = `[CAT:${payloadData.category}] ${finalRemark}`.trim();
         if (payloadData.isHighlight) finalRemark = `[HL] ${finalRemark}`.trim();
         
@@ -143,7 +140,6 @@ export default function App() {
     }
   };
 
-  // ฟังก์ชันลบงาน (เปลี่ยนสถานะเป็น Deleted เพื่อซ่อนจากระบบ)
   const handleDeleteTask = async () => {
     if (!window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบงาน ${formData.wo} ?\n(ข้อมูลจะถูกลบออกจากรายงานทั้งหมด)`)) return;
     
@@ -178,9 +174,8 @@ export default function App() {
     });
   }, [tasks, searchTerm, statusFilter]);
 
-  // ฟังก์ชันช่วยเรียงลำดับตามหมวดหมู่ (ตัวอักษร)
   const sortByCategory = (a, b) => {
-    const catA = (a.category || '\uFFFF').toLowerCase(); // ไม่มีหมวดหมู่เอาไว้ล่างสุด
+    const catA = (a.category || '\uFFFF').toLowerCase(); 
     const catB = (b.category || '\uFFFF').toLowerCase();
     if (catA < catB) return -1;
     if (catA > catB) return 1;
@@ -273,9 +268,9 @@ export default function App() {
     );
   }
 
-  // UI Component สำหรับ Render ตารางใน A4
+  // UI Component สำหรับ Render ตารางใน A4 (แก้ไขบั๊กสีทับข้อความเรียบร้อย)
   const ReportTable = ({ tasksToRender }) => (
-    <table className="w-full text-left border-collapse border border-slate-300 shadow-sm rounded-lg overflow-hidden">
+    <table className="w-full text-left border-collapse border border-slate-300 shadow-sm rounded-lg overflow-hidden" style={{ tableLayout: 'fixed' }}>
       <thead>
         <tr className={`bg-slate-100 text-slate-700 ${textSize} border-b border-slate-300`}>
           <th className={`${tablePad} border-r border-slate-300 font-bold w-[12%] text-center`}>WO</th>
@@ -301,19 +296,21 @@ export default function App() {
               <td className={`${tablePad} border-r border-slate-200 font-bold text-center ${woClass}`}>
                 {isHl && <span>⭐ </span>}{t.wo}
               </td>
-              <td className={`${tablePad} border-r border-slate-200`}>
-                <div className="font-bold">{t.title}</div>
-                <div className="flex gap-1 mt-0.5 items-center flex-wrap">
-                  {t.category && <span className={`text-[9px] px-1.5 rounded-sm font-medium ${isComp ? 'bg-green-200 text-green-900' : 'bg-slate-200 text-slate-700'}`}>{t.category}</span>}
-                  <span className="text-[0.8em] opacity-70 font-normal line-clamp-1">Tag: {t.equipment || '-'}</span>
+              <td className={`${tablePad} border-r border-slate-200 align-top`}>
+                <div className="font-bold mb-1" style={{ wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: '1.3' }}>{t.title}</div>
+                <div style={{ display: 'block', lineHeight: '1.4' }}>
+                  {t.category && <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-sm font-medium mr-1 border ${isComp ? 'bg-green-100 border-green-200 text-green-800' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>{t.category}</span>}
+                  <span className="inline-block text-[10px] text-slate-500 font-normal">Tag: {t.equipment || '-'}</span>
                 </div>
               </td>
-              <td className={`${tablePad} border-r border-slate-200 text-center`}>{formatDate(t.plan)}</td>
-              <td className={`${tablePad} border-r border-slate-200 text-center font-bold`}>{t.status}</td>
-              <td className={`${tablePad} border-r border-slate-200 ${t.blocker && !isComp ? 'text-red-600 font-bold' : ''}`}>
-                {t.blocker || '-'}
+              <td className={`${tablePad} border-r border-slate-200 text-center align-top`}>{formatDate(t.plan)}</td>
+              <td className={`${tablePad} border-r border-slate-200 text-center font-bold align-top`}>{t.status}</td>
+              <td className={`${tablePad} border-r border-slate-200 align-top ${t.blocker && !isComp ? 'text-red-600 font-bold' : ''}`}>
+                <div style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{t.blocker || '-'}</div>
               </td>
-              <td className={`${tablePad}`}>{t.remark || '-'}</td>
+              <td className={`${tablePad} align-top`}>
+                <div style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{t.remark || '-'}</div>
+              </td>
             </tr>
           );
         })}
@@ -508,7 +505,6 @@ export default function App() {
                 <Edit className="w-5 h-5" /> แก้ไขข้อมูลงาน
               </button>
               
-              {/* ปุ่มลบ */}
               <button onClick={handleDeleteTask} className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium transition-colors border border-red-100">
                 <Trash2 className="w-5 h-5" /> ลบงานนี้ทิ้ง
               </button>
@@ -560,7 +556,6 @@ export default function App() {
                   value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
               </div>
 
-              {/* หมวดหมู่ และ Tag อยู่คู่กัน */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium mb-1 text-slate-700">หมวดหมู่ (Category)</label>
@@ -604,7 +599,6 @@ export default function App() {
             </div>
             
             <div className="mt-6 flex justify-between items-center">
-              {/* ปุ่มลบในฟอร์ม (แสดงเฉพาะตอนแก้ไข) */}
               {formData.id ? (
                 <button onClick={handleDeleteTask} className="flex items-center gap-1 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors text-sm font-medium">
                   <Trash2 className="w-4 h-4" /> ลบทิ้ง
