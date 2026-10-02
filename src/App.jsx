@@ -268,17 +268,18 @@ export default function App() {
     );
   }
 
-  // UI Component สำหรับ Render ตารางใน A4 (เอาแถบสีหมวดหมู่ออก ใช้ข้อความธรรมดา)
+  // ปรับความกว้างของคอลัมน์ใน Report ให้ Status กว้างขึ้นเพื่อป้องกันคำล้นขอบ
   const ReportTable = ({ tasksToRender }) => (
     <table className="w-full text-left border-collapse border border-slate-300 shadow-sm rounded-lg overflow-hidden" style={{ tableLayout: 'fixed' }}>
       <thead>
         <tr className={`bg-slate-100 text-slate-700 ${textSize} border-b border-slate-300`}>
-          <th className={`${tablePad} border-r border-slate-300 font-bold w-[12%] text-center`}>WO</th>
-          <th className={`${tablePad} border-r border-slate-300 font-bold w-[30%]`}>Description / Tag</th>
-          <th className={`${tablePad} border-r border-slate-300 font-bold w-[14%] text-center`}>Plan</th>
-          <th className={`${tablePad} border-r border-slate-300 font-bold w-[12%] text-center`}>Status</th>
-          <th className={`${tablePad} border-r border-slate-300 font-bold w-[15%]`}>Blockers</th>
-          <th className={`${tablePad} font-bold w-[17%]`}>Remark</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[11%] text-center`}>WO</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[28%]`}>Description / Tag</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[13%] text-center`}>Plan</th>
+          {/* ขยายความกว้าง Status เป็น 16% */}
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[16%] text-center`}>Status</th>
+          <th className={`${tablePad} border-r border-slate-300 font-bold w-[16%]`}>Blockers</th>
+          <th className={`${tablePad} font-bold w-[16%]`}>Remark</th>
         </tr>
       </thead>
       <tbody>
@@ -298,18 +299,22 @@ export default function App() {
               </td>
               <td className={`${tablePad} border-r border-slate-200 align-top`}>
                 <div className="font-bold">{t.title}</div>
-                {/* ลบแถบสีออก เปลี่ยนเป็นข้อความธรรมดา ป้องกันบักตอน Export รูป */}
                 <div className="text-[10px] text-slate-600 mt-1 font-normal">
                   {t.category && <span className="font-semibold text-slate-700">[{t.category}] </span>}
                   Tag: {t.equipment || '-'}
                 </div>
               </td>
               <td className={`${tablePad} border-r border-slate-200 text-center align-top`}>{formatDate(t.plan)}</td>
-              <td className={`${tablePad} border-r border-slate-200 text-center font-bold align-top`}>{t.status}</td>
-              <td className={`${tablePad} border-r border-slate-200 align-top ${t.blocker && !isComp ? 'text-red-600 font-bold' : ''}`}>
-                {t.blocker || '-'}
+              <td className={`${tablePad} border-r border-slate-200 text-center font-bold align-top`}>
+                {/* เพิ่มคำสั่งกันคำล้น และบีบตัวอักษรเล็กน้อยสำหรับช่องสถานะ */}
+                <div style={{ wordBreak: 'break-word', letterSpacing: '-0.2px' }}>{t.status}</div>
               </td>
-              <td className={`${tablePad} align-top`}>{t.remark || '-'}</td>
+              <td className={`${tablePad} border-r border-slate-200 align-top ${t.blocker && !isComp ? 'text-red-600 font-bold' : ''}`}>
+                <div style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{t.blocker || '-'}</div>
+              </td>
+              <td className={`${tablePad} align-top`}>
+                <div style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{t.remark || '-'}</div>
+              </td>
             </tr>
           );
         })}
