@@ -268,7 +268,7 @@ export default function App() {
     );
   }
 
-  // UI Component สำหรับ Render ตารางใน A4 (แก้ไขบั๊กสีทับข้อความเรียบร้อย)
+  // UI Component สำหรับ Render ตารางใน A4 (เอาแถบสีหมวดหมู่ออก ใช้ข้อความธรรมดา)
   const ReportTable = ({ tasksToRender }) => (
     <table className="w-full text-left border-collapse border border-slate-300 shadow-sm rounded-lg overflow-hidden" style={{ tableLayout: 'fixed' }}>
       <thead>
@@ -293,24 +293,23 @@ export default function App() {
 
           return (
             <tr key={t.id} className={`${textSize} border-b border-slate-200 ${rowClass}`}>
-              <td className={`${tablePad} border-r border-slate-200 font-bold text-center ${woClass}`}>
+              <td className={`${tablePad} border-r border-slate-200 font-bold text-center align-top ${woClass}`}>
                 {isHl && <span>⭐ </span>}{t.wo}
               </td>
               <td className={`${tablePad} border-r border-slate-200 align-top`}>
-                <div className="font-bold mb-1" style={{ wordBreak: 'break-word', whiteSpace: 'normal', lineHeight: '1.3' }}>{t.title}</div>
-                <div style={{ display: 'block', lineHeight: '1.4' }}>
-                  {t.category && <span className={`inline-block text-[10px] px-1.5 py-0.5 rounded-sm font-medium mr-1 border ${isComp ? 'bg-green-100 border-green-200 text-green-800' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>{t.category}</span>}
-                  <span className="inline-block text-[10px] text-slate-500 font-normal">Tag: {t.equipment || '-'}</span>
+                <div className="font-bold">{t.title}</div>
+                {/* ลบแถบสีออก เปลี่ยนเป็นข้อความธรรมดา ป้องกันบักตอน Export รูป */}
+                <div className="text-[10px] text-slate-600 mt-1 font-normal">
+                  {t.category && <span className="font-semibold text-slate-700">[{t.category}] </span>}
+                  Tag: {t.equipment || '-'}
                 </div>
               </td>
               <td className={`${tablePad} border-r border-slate-200 text-center align-top`}>{formatDate(t.plan)}</td>
               <td className={`${tablePad} border-r border-slate-200 text-center font-bold align-top`}>{t.status}</td>
               <td className={`${tablePad} border-r border-slate-200 align-top ${t.blocker && !isComp ? 'text-red-600 font-bold' : ''}`}>
-                <div style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{t.blocker || '-'}</div>
+                {t.blocker || '-'}
               </td>
-              <td className={`${tablePad} align-top`}>
-                <div style={{ wordBreak: 'break-word', whiteSpace: 'normal' }}>{t.remark || '-'}</div>
-              </td>
+              <td className={`${tablePad} align-top`}>{t.remark || '-'}</td>
             </tr>
           );
         })}
