@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Search, Filter, CheckCircle, Clock, FileText, AlertCircle, 
-  Plus, Camera, Layers, Calendar, Loader, Wrench, Edit, Settings, MessageSquare, Star
+  Plus, Camera, Layers, Calendar, Loader, Wrench, Edit, Settings, MessageSquare, Star, Trash2
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 
@@ -20,7 +20,7 @@ export default function App() {
   const [modalType, setModalType] = useState(null); 
   
   const defaultForm = {
-    id: null, wo: '', title: '', equipment: '', plan: '', status: 'Pending', blocker: '', blockerOther: '', remark: '', isHighlight: false
+    id: null, wo: '', title: '', category: '', equipment: '', plan: '', status: 'Pending', blocker: '', blockerOther: '', remark: '', isHighlight: false
   };
   const [formData, setFormData] = useState(defaultForm);
   const reportRef = useRef(null);
@@ -36,15 +36,26 @@ export default function App() {
       const response = await fetch(GOOGLE_SHEET_API_URL);
       const data = await response.json();
       
+      // แปลงข้อมูลและกรองงานที่ถูกลบทิ้ง (Deleted) ออกทันที
       const processedData = data.map(t => {
         let r = String(t.remark || '');
         let hl = false;
+        let cat = '';
+        
         if (r.includes('[HL]')) {
           hl = true;
           r = r.replace('[HL]', '').trim();
         }
-        return { ...t, remark: r, isHighlight: hl };
-      });
+        
+        const catMatch = r.match(/\[CAT:(.*?)\]/);
+        if (catMatch) {
+          cat = catMatch[1];
+          r = r.replace(catMatch[0], '').trim();
+        }
+        
+        return { ...t, remark: r, isHighlight: hl, category: cat };
+      }).filter(t => t.status !== 'Deleted'); // ซ่อนงานที่ถูกลบ
+      
       setTasks(processedData);
     } catch (error) {
       setTasks([]); 
@@ -52,6 +63,12 @@ export default function App() {
       setIsLoading(false);
     }
   };
+
+  // ดึงหมวดหมู่ที่ไม่ซ้ำกันมาทำเป็น Dropdown
+  const uniqueCategories = useMemo(() => {
+    const cats = tasks.map(t => t.category).filter(c => c && c.trim() !== '');
+    return [...new Set(cats)];
+  }, [tasks]);
 
   const openActionMenu = (task) => {
     let currentBlocker = task.blocker || '';
@@ -91,9 +108,13 @@ export default function App() {
     if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
       try {
         const payloadData = { ...taskData };
-        if (payloadData.isHighlight) {
-          payloadData.remark = `[HL] ${payloadData.remark || ''}`.trim();
-        }
+        let finalRemark = payloadData.remark || '';
+        
+        // แอบแพ็ค Category และ Highlight ลงไปใน Remark เพื่อไม่ต้องแก้ Database
+        if (payloadData.category) finalRemark = `[CAT:${payloadData.category}] ${finalRemark}`.trim();
+        if (payloadData.isHighlight) finalRemark = `[HL] ${finalRemark}`.trim();
+        
+        payloadData.remark = finalRemark;
 
         await fetch(GOOGLE_SHEET_API_URL, { 
           method: 'POST', 
@@ -122,6 +143,24 @@ export default function App() {
     }
   };
 
+  // ฟังก์ชันลบงาน (เปลี่ยนสถานะเป็น Deleted เพื่อซ่อนจากระบบ)
+  const handleDeleteTask = async () => {
+    if (!window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบงาน ${formData.wo} ?\n(ข้อมูลจะถูกลบออกจากรายงานทั้งหมด)`)) return;
+    
+    const taskId = formData.id;
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    setModalType(null);
+
+    if (GOOGLE_SHEET_API_URL && GOOGLE_SHEET_API_URL !== 'ใส่_URL_ของคุณตรงนี้') {
+      try {
+        await fetch(GOOGLE_SHEET_API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'updateStatus', id: taskId, status: 'Deleted', date: new Date().toISOString().split('T')[0] })
+        });
+      } catch (err) {}
+    }
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return String(dateString).split('T')[0];
@@ -133,27 +172,30 @@ export default function App() {
         const diffTime = Math.abs(new Date() - new Date(task.completedDate));
         if (Math.ceil(diffTime / (1000 * 60 * 60 * 24)) > 30) return false;
       }
-      const searchMatch = (task.title + task.wo + task.equipment + (task.remark || '')).toLowerCase().includes(searchTerm.toLowerCase());
+      const searchMatch = (task.title + task.wo + task.equipment + task.category + (task.remark || '')).toLowerCase().includes(searchTerm.toLowerCase());
       const statusMatch = statusFilter === 'All' ? true : statusFilter === 'Blocked' ? (task.blocker && task.status !== 'Completed') : task.status === statusFilter;
       return searchMatch && statusMatch;
     });
   }, [tasks, searchTerm, statusFilter]);
 
-  // ประมวลผลข้อมูลสำหรับ Report
-  const highlightedTasks = filteredTasks.filter(t => t.isHighlight && t.status !== 'Completed');
-  const normalTasks = filteredTasks.filter(t => !t.isHighlight || t.status === 'Completed');
-  
-  // นำข้อมูลมารวมกันให้ Highlight อยู่บนสุด (แสดงผล "ทั้งหมด" ไม่ตัดทิ้งแล้ว)
+  // ฟังก์ชันช่วยเรียงลำดับตามหมวดหมู่ (ตัวอักษร)
+  const sortByCategory = (a, b) => {
+    const catA = (a.category || '\uFFFF').toLowerCase(); // ไม่มีหมวดหมู่เอาไว้ล่างสุด
+    const catB = (b.category || '\uFFFF').toLowerCase();
+    if (catA < catB) return -1;
+    if (catA > catB) return 1;
+    return 0;
+  };
+
+  const highlightedTasks = filteredTasks.filter(t => t.isHighlight && t.status !== 'Completed').sort(sortByCategory);
+  const normalTasks = filteredTasks.filter(t => !t.isHighlight || t.status === 'Completed').sort(sortByCategory);
   const reportTasks = [...highlightedTasks, ...normalTasks];
 
-  // ระบบ Auto-Fit: คำนวณความหนาแน่นของตารางเพื่อปรับขนาดตัวอักษรให้อยู่ในหน้า A4
-  const isDense = reportTasks.length > 26; // เริ่มปรับเมื่อมีงานเกิน 26 งาน
-  const isVeryDense = reportTasks.length > 40; // ปรับเล็กสุดเมื่อมีงานเกิน 40 งาน
-  
+  const isDense = reportTasks.length > 26; 
+  const isVeryDense = reportTasks.length > 40; 
   const tablePad = isVeryDense ? 'p-1' : isDense ? 'p-1.5' : 'p-2';
   const textSize = isVeryDense ? 'text-[9px]' : isDense ? 'text-[10px]' : 'text-xs';
 
-  // แบ่ง 2 คอลัมน์ ซ้าย-ขวา
   const midPoint = Math.ceil(reportTasks.length / 2);
   const leftTasks = reportTasks.slice(0, midPoint);
   const rightTasks = reportTasks.slice(midPoint);
@@ -170,12 +212,12 @@ export default function App() {
   };
 
   const blockerKPIs = [
-    { key: 'outage', label: 'รอ Outage', count: stats.outage, border: 'border-l-red-500', text: 'text-red-600', bg: 'bg-white' },
-    { key: 'spare', label: 'รอ Spare Part', count: stats.spare, border: 'border-l-purple-500', text: 'text-purple-600', bg: 'bg-white' },
-    { key: 'scaffold', label: 'รอนั่งร้าน', count: stats.scaffold, border: 'border-l-orange-500', text: 'text-orange-600', bg: 'bg-white' },
-    { key: 'contractor', label: 'รอผู้รับเหมา', count: stats.contractor, border: 'border-l-emerald-500', text: 'text-emerald-600', bg: 'bg-white' },
-    { key: 'manpower', label: 'รอ Manpower', count: stats.manpower, border: 'border-l-yellow-500', text: 'text-yellow-600', bg: 'bg-white' },
-    { key: 'other', label: 'ติดปัญหาอื่นๆ', count: stats.other, border: 'border-l-slate-500', text: 'text-slate-600', bg: 'bg-white' },
+    { key: 'outage', label: 'รอ Outage', count: stats.outage, border: 'border-l-red-500', text: 'text-red-600' },
+    { key: 'spare', label: 'รอ Spare Part', count: stats.spare, border: 'border-l-purple-500', text: 'text-purple-600' },
+    { key: 'scaffold', label: 'รอนั่งร้าน', count: stats.scaffold, border: 'border-l-orange-500', text: 'text-orange-600' },
+    { key: 'contractor', label: 'รอผู้รับเหมา', count: stats.contractor, border: 'border-l-emerald-500', text: 'text-emerald-600' },
+    { key: 'manpower', label: 'รอ Manpower', count: stats.manpower, border: 'border-l-yellow-500', text: 'text-yellow-600' },
+    { key: 'other', label: 'ติดปัญหาอื่นๆ', count: stats.other, border: 'border-l-slate-500', text: 'text-slate-600' },
   ];
   const activeBlockers = blockerKPIs.filter(b => b.count > 0); 
 
@@ -210,28 +252,7 @@ export default function App() {
           await navigator.clipboard.write([item]);
           alert('คัดลอกรูปภาพรายงานสำเร็จแล้ว! 🎉\nสามารถไปที่แชท LINE แล้วกด "วาง (Paste)" ได้เลยครับ');
         } catch (err) {
-          const today = new Date().toLocaleDateString('th-TH');
-          let text = `🛠️ สรุปงานค้างซ่อมบำรุง EPT-LV\n📅 วันที่: ${today}\n\n`;
-          text += `📊 สถานะปัจจุบัน:\n- ⏳ Pending ทั้งหมด: ${stats.pending} งาน\n`;
-          activeBlockers.forEach(b => text += `- ${b.label}: ${b.count} งาน\n`);
-          
-          if (highlightedTasks.length > 0) {
-            text += `\n⭐ งาน HIGHLIGHT สำคัญ:\n`;
-            highlightedTasks.forEach((t, i) => {
-              text += `${i + 1}. ${t.wo} : ${t.title} ${t.blocker ? `[ติด: ${t.blocker}]` : ''}\n`;
-            });
-          }
-          
-          const normalPending = normalTasks.filter(t => t.status !== 'Completed');
-          if (normalPending.length > 0) {
-            text += `\n📝 งานกำลังดำเนินการ (ทั่วไป):\n`;
-            normalPending.forEach((t, i) => {
-              text += `${i + 1}. ${t.wo} : ${t.title} ${t.blocker ? `[ติด: ${t.blocker}]` : ''}\n`;
-            });
-          }
-          
-          navigator.clipboard.writeText(text);
-          alert('เบราว์เซอร์ไม่รองรับการก๊อปปี้รูป ระบบได้เปลี่ยนเป็นการคัดลอก "ข้อความ" ให้แทนครับ\nนำไปกดวางใน LINE ได้เลยครับ');
+          alert('เบราว์เซอร์ไม่รองรับการก๊อปปี้รูป กรุณาใช้ปุ่ม Export A4 แทนครับ');
         } finally {
           element.style.display = 'none';
           setIsCopying(false);
@@ -252,7 +273,7 @@ export default function App() {
     );
   }
 
-  // UI Component สำหรับ Render ตารางใน A4 (ลดความซ้ำซ้อนโค้ด)
+  // UI Component สำหรับ Render ตารางใน A4
   const ReportTable = ({ tasksToRender }) => (
     <table className="w-full text-left border-collapse border border-slate-300 shadow-sm rounded-lg overflow-hidden">
       <thead>
@@ -268,21 +289,31 @@ export default function App() {
       <tbody>
         {tasksToRender.map(t => {
           const isHl = t.isHighlight && t.status !== 'Completed';
+          const isComp = t.status === 'Completed';
+          
+          let rowClass = 'bg-white text-slate-800';
+          let woClass = 'text-blue-700';
+          if (isHl) { rowClass = 'bg-yellow-50 font-semibold text-slate-900'; woClass = 'text-yellow-700'; }
+          else if (isComp) { rowClass = 'bg-green-50 text-green-800'; woClass = 'text-green-700'; }
+
           return (
-            <tr key={t.id} className={`${textSize} text-slate-800 border-b border-slate-200 ${isHl ? 'bg-yellow-50 font-semibold' : 'bg-white'}`}>
-              <td className={`${tablePad} border-r border-slate-200 font-bold text-center ${isHl ? 'text-yellow-700' : 'text-blue-700'}`}>
+            <tr key={t.id} className={`${textSize} border-b border-slate-200 ${rowClass}`}>
+              <td className={`${tablePad} border-r border-slate-200 font-bold text-center ${woClass}`}>
                 {isHl && <span>⭐ </span>}{t.wo}
               </td>
               <td className={`${tablePad} border-r border-slate-200`}>
                 <div className="font-bold">{t.title}</div>
-                <div className="text-[0.8em] text-slate-500 mt-0.5 font-normal line-clamp-1">{t.equipment || '-'}</div>
+                <div className="flex gap-1 mt-0.5 items-center flex-wrap">
+                  {t.category && <span className={`text-[9px] px-1.5 rounded-sm font-medium ${isComp ? 'bg-green-200 text-green-900' : 'bg-slate-200 text-slate-700'}`}>{t.category}</span>}
+                  <span className="text-[0.8em] opacity-70 font-normal line-clamp-1">Tag: {t.equipment || '-'}</span>
+                </div>
               </td>
               <td className={`${tablePad} border-r border-slate-200 text-center`}>{formatDate(t.plan)}</td>
-              <td className={`${tablePad} border-r border-slate-200 text-center font-medium`}>{t.status}</td>
-              <td className={`${tablePad} border-r border-slate-200 ${t.blocker && t.status !== 'Completed' ? 'text-red-600 font-bold' : ''}`}>
+              <td className={`${tablePad} border-r border-slate-200 text-center font-bold`}>{t.status}</td>
+              <td className={`${tablePad} border-r border-slate-200 ${t.blocker && !isComp ? 'text-red-600 font-bold' : ''}`}>
                 {t.blocker || '-'}
               </td>
-              <td className={`${tablePad} text-slate-600`}>{t.remark || '-'}</td>
+              <td className={`${tablePad}`}>{t.remark || '-'}</td>
             </tr>
           );
         })}
@@ -297,7 +328,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 p-4 md:p-6 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
-        {/* Header และ ปุ่มจัดการหน้าเว็บปกติ */}
+        {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -318,7 +349,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Dashboard สรุปด้านบน (หน้าเว็บ) */}
+        {/* Dashboard สรุป */}
         <div className="flex flex-wrap gap-4">
           <div className="flex-1 min-w-[150px] bg-white p-4 rounded-xl shadow-sm border-l-4 border-l-blue-500">
             <div className="text-slate-500 text-sm font-medium">Pending ทั้งหมด</div>
@@ -331,19 +362,13 @@ export default function App() {
               <div className={`text-3xl font-bold ${b.text}`}>{b.count}</div>
             </div>
           ))}
-
-          {activeBlockers.length === 0 && (
-            <div className="flex-1 min-w-[150px] bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-center text-slate-400">
-              ไม่มีงานติดปัญหา (Blocker) 🎉
-            </div>
-          )}
         </div>
 
-        {/* ระบบ Filter (หน้าเว็บ) */}
+        {/* ระบบ Filter */}
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" />
-            <input type="text" placeholder="ค้นหา Work Order, ชื่องาน, Tag หรือ Remark..." 
+            <input type="text" placeholder="ค้นหา Work Order, ชื่องาน, หมวดหมู่, Tag หรือ Remark..." 
               className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
               value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
@@ -364,7 +389,7 @@ export default function App() {
           <div className="mb-6 bg-white rounded-xl shadow-sm border-2 border-yellow-300 overflow-hidden">
             <div className="bg-yellow-50 text-yellow-800 font-bold p-4 border-b border-yellow-200 flex items-center gap-2">
               <Star className="w-5 h-5 fill-yellow-500 text-yellow-500" />
-              งาน Highlight ({highlightedTasks.length})
+              งาน Highlight เร่งด่วน / สำคัญ ({highlightedTasks.length})
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
@@ -383,7 +408,13 @@ export default function App() {
                   {highlightedTasks.map((task) => (
                     <tr key={task.id} className="hover:bg-yellow-50 group transition-colors">
                       <td className="p-4"><span className="px-2.5 py-1 rounded bg-yellow-100 text-yellow-800 text-sm font-bold">{task.wo}</span></td>
-                      <td className="p-4 font-bold text-slate-900">{task.title} <div className="text-xs text-slate-500 mt-1 font-normal">Tag: {task.equipment || '-'}</div></td>
+                      <td className="p-4">
+                        <div className="font-bold text-slate-900">{task.title}</div>
+                        <div className="flex gap-2 items-center mt-1">
+                          {task.category && <span className="text-[10px] px-2 py-0.5 rounded-full bg-yellow-200 text-yellow-800 font-medium">{task.category}</span>}
+                          <span className="text-xs text-slate-500">Tag: {task.equipment || '-'}</span>
+                        </div>
+                      </td>
                       <td className="p-4 text-sm text-slate-600">{task.plan ? <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4"/> {formatDate(task.plan)}</div> : '-'}</td>
                       <td className="p-4"><span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium border bg-amber-50 text-amber-700 border-amber-200">{task.status}</span></td>
                       <td className="p-4 text-sm">{task.blocker ? <span className="text-red-600 font-semibold">{task.blocker}</span> : '-'}</td>
@@ -427,9 +458,15 @@ export default function App() {
                   <tr><td colSpan="7" className="p-8 text-center text-slate-500">ไม่มีข้อมูลงานในหมวดหมู่นี้</td></tr>
                 ) : (
                   normalTasks.map((task) => (
-                    <tr key={task.id} className={`hover:bg-slate-50 group ${task.status === 'Completed' ? 'opacity-70' : ''}`}>
+                    <tr key={task.id} className={`hover:bg-slate-50 group ${task.status === 'Completed' ? 'bg-green-50/30' : ''}`}>
                       <td className="p-4"><span className="px-2.5 py-1 rounded bg-slate-100 text-slate-700 text-sm">{task.wo}</span></td>
-                      <td className="p-4 font-medium text-slate-800">{task.title} <div className="text-xs text-slate-500 mt-1">Tag: {task.equipment || '-'}</div></td>
+                      <td className="p-4">
+                        <div className="font-bold text-slate-800">{task.title}</div>
+                        <div className="flex gap-2 items-center mt-1">
+                          {task.category && <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${task.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-blue-50 text-blue-600'}`}>{task.category}</span>}
+                          <span className="text-xs text-slate-500">Tag: {task.equipment || '-'}</span>
+                        </div>
+                      </td>
                       <td className="p-4 text-sm text-slate-600">
                         {task.plan ? <div className="flex items-center gap-1.5"><Calendar className="w-4 h-4 text-slate-400"/> {formatDate(task.plan)}</div> : '-'}
                       </td>
@@ -470,6 +507,12 @@ export default function App() {
               <button onClick={() => setModalType('form')} className="w-full flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition-colors">
                 <Edit className="w-5 h-5" /> แก้ไขข้อมูลงาน
               </button>
+              
+              {/* ปุ่มลบ */}
+              <button onClick={handleDeleteTask} className="w-full flex items-center justify-center gap-2 py-3 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium transition-colors border border-red-100">
+                <Trash2 className="w-5 h-5" /> ลบงานนี้ทิ้ง
+              </button>
+              
               <button onClick={() => setModalType(null)} className="w-full py-3 text-slate-500 hover:bg-slate-100 rounded-lg font-medium transition-colors mt-2">
                 ยกเลิก / ปิด
               </button>
@@ -481,7 +524,7 @@ export default function App() {
       {/* Modal Form */}
       {modalType === 'form' && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full p-6">
             <h2 className="text-xl font-bold text-slate-800 mb-4 border-b pb-2">
               {formData.id ? 'แก้ไขข้อมูลงาน' : 'เพิ่มงานค้างใหม่ (EPT-LV)'}
             </h2>
@@ -500,28 +543,43 @@ export default function App() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Work Order (WO)</label>
+                  <label className="block text-sm font-medium mb-1 text-slate-700">Work Order (WO)</label>
                   <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
                     value={formData.wo} onChange={e => setFormData({...formData, wo: e.target.value})} />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Plan Date</label>
+                  <label className="block text-sm font-medium mb-1 text-slate-700">Plan Date</label>
                   <input type="date" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
                     value={formatDate(formData.plan)} onChange={e => setFormData({...formData, plan: e.target.value})} />
                 </div>
               </div>
+              
               <div>
-                <label className="block text-sm font-medium mb-1">ชื่องาน (Description)</label>
+                <label className="block text-sm font-medium mb-1 text-slate-700">ชื่องาน (Description)</label>
                 <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
                   value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Tag อุปกรณ์</label>
-                <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
-                  value={formData.equipment} onChange={e => setFormData({...formData, equipment: e.target.value})} />
+
+              {/* หมวดหมู่ และ Tag อยู่คู่กัน */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-slate-700">หมวดหมู่ (Category)</label>
+                  <input type="text" list="category-options" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                    value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} 
+                    placeholder="เช่น ไฟฟ้า, ซ่อม..." />
+                  <datalist id="category-options">
+                    {uniqueCategories.map((c, i) => <option key={i} value={c} />)}
+                  </datalist>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1 text-slate-700">Tag อุปกรณ์</label>
+                  <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
+                    value={formData.equipment} onChange={e => setFormData({...formData, equipment: e.target.value})} />
+                </div>
               </div>
+
               <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                <label className="block text-sm font-medium mb-1">สาเหตุที่ติด (Blocker)</label>
+                <label className="block text-sm font-medium mb-1 text-slate-700">สาเหตุที่ติด (Blocker)</label>
                 <select className="w-full border border-slate-300 rounded-lg px-3 py-2 mb-2 focus:ring-2 focus:ring-blue-500 focus:outline-none bg-white"
                   value={formData.blocker} onChange={e => setFormData({...formData, blocker: e.target.value, blockerOther: ''})}>
                   <option value="">-- ไม่ติด (ดำเนินการได้) --</option>
@@ -537,21 +595,32 @@ export default function App() {
                     value={formData.blockerOther} onChange={e => setFormData({...formData, blockerOther: e.target.value})} autoFocus />
                 )}
               </div>
+              
               <div>
-                <label className="block text-sm font-medium mb-1">Remark (หมายเหตุเพิ่มเติม)</label>
+                <label className="block text-sm font-medium mb-1 text-slate-700">Remark (หมายเหตุเพิ่มเติม)</label>
                 <input type="text" className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:outline-none" 
                   value={formData.remark} onChange={e => setFormData({...formData, remark: e.target.value})} />
               </div>
             </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button onClick={() => setModalType(null)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors">ยกเลิก</button>
-              <button onClick={handleSaveTask} className="px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors">บันทึกข้อมูล</button>
+            
+            <div className="mt-6 flex justify-between items-center">
+              {/* ปุ่มลบในฟอร์ม (แสดงเฉพาะตอนแก้ไข) */}
+              {formData.id ? (
+                <button onClick={handleDeleteTask} className="flex items-center gap-1 px-3 py-2 bg-red-50 text-red-600 hover:bg-red-100 rounded-lg transition-colors text-sm font-medium">
+                  <Trash2 className="w-4 h-4" /> ลบทิ้ง
+                </button>
+              ) : <div></div>}
+              
+              <div className="flex gap-2">
+                <button onClick={() => setModalType(null)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-lg transition-colors">ยกเลิก</button>
+                <button onClick={handleSaveTask} className="px-5 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm transition-colors">บันทึกข้อมูล</button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ---------------- Hidden Export Template (Report A4 แนวนอน 2 คอลัมน์ สีสันสวยงาม) ---------------- */}
+      {/* ---------------- Hidden Export Template (Report A4 แนวนอน 2 คอลัมน์) ---------------- */}
       <div ref={reportRef} className="hidden bg-white p-8 mx-auto" style={{ width: '1123px', minHeight: '794px', boxSizing: 'border-box' }}>
           
           <div className="flex justify-between items-end mb-6 border-b-2 border-slate-100 pb-4">
@@ -559,7 +628,6 @@ export default function App() {
               <h1 className="text-3xl font-extrabold text-slate-800 mb-1 tracking-tight">EPT-LV Maintenance Backlog</h1>
               <p className="text-slate-500 font-medium">Last Update: {new Date().toLocaleDateString('th-TH')} | แผนก: EPT-LV</p>
             </div>
-            {/* โชว์ยอดสรุปรวมขวาบน */}
             <div className="flex gap-2">
               <div className="bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg text-center">
                 <div className="text-xs font-bold text-blue-600 uppercase">Total Pending</div>
@@ -568,7 +636,6 @@ export default function App() {
             </div>
           </div>
           
-          {/* กล่อง KPI จัดเรียงแนวนอนสวยงาม */}
           {activeBlockers.length > 0 && (
             <div className="flex gap-3 mb-6 w-full">
               {activeBlockers.map(b => (
@@ -580,14 +647,13 @@ export default function App() {
             </div>
           )}
 
-          {/* ตารางงาน 2 คอลัมน์ (Auto-Fit) */}
           <div className="grid grid-cols-2 gap-6 items-start w-full">
             <ReportTable tasksToRender={leftTasks} />
             <ReportTable tasksToRender={rightTasks} />
           </div>
           
           <div className="mt-4 text-center text-xs text-slate-400 font-medium pt-2">
-            * สรุปรายงานสถานะงานค้าง โดยแผนก EPT-LV
+            * สรุปรายงานสถานะงานค้าง งาน Highlight และงานเสร็จสิ้น โดยแผนก EPT-LV
           </div>
       </div>
     </div>
